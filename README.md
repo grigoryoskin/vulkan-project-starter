@@ -12,3 +12,4 @@ I added a scene to demonstrate different uses cases:
 ![ezgif-2-1d3e33644e21](https://user-images.githubusercontent.com/44236259/123550557-11064300-d7a9-11eb-87f9-839356194c8c.gif)
 
 It consists of the following parts: 
+ - [Application context](https://github.com/grigoryoskin/vulkan-project-starter/blob/master/src/app-context/VulkanApplicationContext.h) - A wrapper for instance, device, queues and command pool.
