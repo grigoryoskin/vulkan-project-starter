@@ -9,7 +9,6 @@ I added a scene to demonstrate different uses cases:
  - Offscreen render pass that renders the scene into a texture.
  - Post processing render pass that displays the rendered texture onto a quad with gamma correction done in fragment shader.
 
- ![Uploading ezgif-2-1d3e33644e21.gif…]()
+![ezgif-2-1d3e33644e21](https://user-images.githubusercontent.com/44236259/123550557-11064300-d7a9-11eb-87f9-839356194c8c.gif)
 
- 
 It consists of the following parts: 
