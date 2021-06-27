@@ -39,7 +39,11 @@ cmake -S ../ -B ./
 ```
 make
 ```
-6. Run it.
+6. Compile shaders. You might want to run this with sudo if you dont have permissions for write.
+```
+sh ../compile.sh
+```
+7. Run the executable.
 ```
 ./vulkan
 ```
