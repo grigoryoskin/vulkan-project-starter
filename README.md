@@ -14,6 +14,7 @@ Demo scene in [main.cpp](https://github.com/grigoryoskin/vulkan-project-starter/
 
 ## TODOs: 
 - [ ] Organize header files and includes.
+- [ ] Use Vulkan Memory Allocator
 - [ ] Add multisampling.
 - [ ] Use fences for GPU - CPU synchronization.
 - [ ] Support swapchain recreation on resize.
