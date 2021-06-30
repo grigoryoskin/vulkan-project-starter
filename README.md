@@ -14,7 +14,8 @@ Demo scene in [main.cpp](https://github.com/grigoryoskin/vulkan-project-starter/
 
 ## TODOs: 
 - [ ] Organize header files and includes.
-- [ ] Use Vulkan Memory Allocator
+- [ ] Use Vulkan Memory Allocator.
+- [ ] Make ApplicationContext into a global singleton.
 - [ ] Add multisampling.
 - [ ] Use fences for GPU - CPU synchronization.
 - [ ] Support swapchain recreation on resize.
