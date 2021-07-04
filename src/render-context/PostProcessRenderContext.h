@@ -1,5 +1,9 @@
-#ifndef VULKAN_POST_PROCESS_RENDER_CONTEXT_H
-#define VULKAN_POST_PROCESS_RENDER_CONTEXT_H
+#pragma once
+
+#include <iostream>
+#include <vector>
+#include <array>
+#include "../utils/vulkan.h"
 
 class PostProcessRenderContext {
     public:
@@ -9,8 +13,7 @@ class PostProcessRenderContext {
         // while presenting the other.
         std::vector<VkFramebuffer> swapChainFramebuffers;
         
-        void init(VulkanApplicationContext *context, VulkanSwapchain *swapchainContext) {
-            this->context = context;
+        void init(VulkanSwapchain *swapchainContext) {
             this->swapchainContext = swapchainContext;
             createRenderPass();
             createFramebuffers();
@@ -18,14 +21,13 @@ class PostProcessRenderContext {
 
         void destroy() {
             for (size_t i = 0; i < swapChainFramebuffers.size(); i++) {
-                vkDestroyFramebuffer(context->device, swapChainFramebuffers[i], nullptr);
+                vkDestroyFramebuffer(VulkanGlobal::context.device, swapChainFramebuffers[i], nullptr);
             }
 
-            vkDestroyRenderPass(context->device, renderPass, nullptr);
+            vkDestroyRenderPass(VulkanGlobal::context.device, renderPass, nullptr);
         }
 
     private:
-        VulkanApplicationContext *context;
         VulkanSwapchain *swapchainContext;
         
         void createRenderPass() {
@@ -101,7 +103,7 @@ class PostProcessRenderContext {
             renderPassInfo.dependencyCount = 2;
             renderPassInfo.pDependencies = dependencies.data();
             
-            if (vkCreateRenderPass(context->device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
+            if (vkCreateRenderPass(VulkanGlobal::context.device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create render pass!");
             }
         }
@@ -122,11 +124,9 @@ class PostProcessRenderContext {
                 framebufferInfo.height = swapchainContext->swapChainExtent.height;
                 framebufferInfo.layers = 1;
 
-                if (vkCreateFramebuffer(context->device, &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
+                if (vkCreateFramebuffer(VulkanGlobal::context.device, &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
                     throw std::runtime_error("failed to create framebuffer!");
                 }
             }
         }
 };
-
-#endif

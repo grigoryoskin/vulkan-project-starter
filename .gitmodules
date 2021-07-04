@@ -10,3 +10,6 @@
 [submodule "external/obj-loader"]
 	path = external/obj-loader
 	url = https://github.com/tinyobjloader/tinyobjloader
+[submodule "external/memory-allocator-hpp"]
+	path = external/memory-allocator-hpp
+	url = https://github.com/malte-v/VulkanMemoryAllocator-Hpp

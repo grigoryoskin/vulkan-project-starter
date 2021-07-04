@@ -1,23 +1,26 @@
-#ifndef VULKAN_PIPELINE_H
-#define VULKAN_PIPELINE_H
+#pragma once
+
+#include <iostream>
+#include <string>
+#include "../utils/vulkan.h"
+#include "../utils/readfile.h"
 
 namespace VulkanPipeline {
 
-VkShaderModule createShaderModule(VulkanApplicationContext &appContext, const std::vector<char>& code) {
+VkShaderModule createShaderModule(const std::vector<char>& code) {
     VkShaderModuleCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     createInfo.codeSize = code.size();
     createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
 
     VkShaderModule shaderModule;
-    if (vkCreateShaderModule(appContext.device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+    if (vkCreateShaderModule(VulkanGlobal::context.device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
         throw std::runtime_error("failed to create shader module!");
     }
     return shaderModule;
 }
 
-void createGraphicsPipeline(VulkanApplicationContext &appContext,
-                            VkExtent2D &swapChainExtent,
+void createGraphicsPipeline(VkExtent2D &swapChainExtent,
                             VkDescriptorSetLayout *descriptorSetLayout,
                             VkRenderPass &renderPass,
                             std::string vertexShaderPath,
@@ -26,8 +29,8 @@ void createGraphicsPipeline(VulkanApplicationContext &appContext,
                             VkPipeline &graphicsPipeline) {
     auto vertShaderCode = readFile(vertexShaderPath);
     auto fragShaderCode = readFile(fragmentShaderPath);
-    VkShaderModule vertShaderModule = createShaderModule(appContext, vertShaderCode);
-    VkShaderModule fragShaderModule = createShaderModule(appContext, fragShaderCode);
+    VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
+    VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
 
     VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
     vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -97,7 +100,7 @@ void createGraphicsPipeline(VulkanApplicationContext &appContext,
     VkPipelineMultisampleStateCreateInfo multisampling{};
     multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisampling.sampleShadingEnable = VK_FALSE;
-    multisampling.rasterizationSamples = appContext.msaaSamples;
+    multisampling.rasterizationSamples = VulkanGlobal::context.msaaSamples;
     multisampling.sampleShadingEnable = VK_TRUE; // enable sample shading in the pipeline
     multisampling.minSampleShading = .2f; // min fraction for sample shading; closer to one is smoother
     multisampling.pSampleMask = nullptr; // Optional
@@ -134,7 +137,7 @@ void createGraphicsPipeline(VulkanApplicationContext &appContext,
     pipelineLayoutInfo.setLayoutCount = 1;
     pipelineLayoutInfo.pSetLayouts = descriptorSetLayout;
 
-    if (vkCreatePipelineLayout(appContext.device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+    if (vkCreatePipelineLayout(VulkanGlobal::context.device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
         throw std::runtime_error("failed to create pipeline layout!");
     }
 
@@ -169,13 +172,12 @@ void createGraphicsPipeline(VulkanApplicationContext &appContext,
     pipelineInfo.basePipelineIndex = -1; // Optional
     pipelineInfo.pDepthStencilState = &depthStencil;
 
-    if (vkCreateGraphicsPipelines(appContext.device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
+    if (vkCreateGraphicsPipelines(VulkanGlobal::context.device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
         throw std::runtime_error("failed to create graphics pipeline!");
     }
 
-    vkDestroyShaderModule(appContext.device, fragShaderModule, nullptr);
-    vkDestroyShaderModule(appContext.device, vertShaderModule, nullptr);
+    vkDestroyShaderModule(VulkanGlobal::context.device, fragShaderModule, nullptr);
+    vkDestroyShaderModule(VulkanGlobal::context.device, vertShaderModule, nullptr);
 }
 
 }
-#endif

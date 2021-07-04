@@ -1,12 +1,24 @@
-#ifndef VULKAN_IMAGE_H
-#define VULKAN_IMAGE_H
-
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
+#include <iostream>
+#include <string>
+#include <cmath>
+#include "vk_mem_alloc.h"
+#include "VulkanBuffer.h"
+#include "SingleTimeCommand.h"
+#include "../utils/StbImageImpl.h"
+#include "VulkanImage.h"
 
 namespace VulkanImage {
 
-VkImageView createImageView(VulkanApplicationContext &context, VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels) {
+void VulkanImage::destroy() {
+    vkDestroyImageView(VulkanGlobal::context.device, imageView, nullptr);
+    vkDestroyImage(VulkanGlobal::context.device, image, nullptr);
+    vmaFreeMemory(VulkanGlobal::context.allocator, allocation);
+}
+
+VkImageView createImageView(VkImage &image,
+                            VkFormat format, 
+                            VkImageAspectFlags aspectFlags, 
+                            uint32_t mipLevels) {
     VkImageViewCreateInfo viewInfo{};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewInfo.image = image;
@@ -19,14 +31,23 @@ VkImageView createImageView(VulkanApplicationContext &context, VkImage image, Vk
     viewInfo.subresourceRange.layerCount = 1;
 
     VkImageView imageView;
-    if (vkCreateImageView(context.device, &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
+    if (vkCreateImageView(VulkanGlobal::context.device, &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
         throw std::runtime_error("failed to create texture image view!");
     }
 
     return imageView;
 }
 
-void createImage(VulkanApplicationContext &context, uint32_t width, uint32_t height, uint32_t mipLevels, VkSampleCountFlagBits numSamples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory) {
+void createImage(uint32_t width,
+                 uint32_t height,
+                 uint32_t mipLevels,
+                 VkSampleCountFlagBits numSamples,
+                 VkFormat format,
+                 VkImageTiling tiling,
+                 VkImageUsageFlags usage,
+                 VkImageAspectFlags aspectFlags,
+                 VmaMemoryUsage memoryUsage,
+                 VulkanImage& allocatedImage) {
     VkImageCreateInfo imageInfo{};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -42,27 +63,29 @@ void createImage(VulkanApplicationContext &context, uint32_t width, uint32_t hei
     imageInfo.samples = numSamples;
     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    if (vkCreateImage(context.device, &imageInfo, nullptr, &image) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create image!");
+    VmaAllocationCreateInfo vmaallocInfo = {};
+    vmaallocInfo.usage = memoryUsage;
+
+    if (vmaCreateImage(VulkanGlobal::context.allocator,
+                       &imageInfo,
+                       &vmaallocInfo,
+                       &allocatedImage.image,
+                       &allocatedImage.allocation,
+                       nullptr) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create buffer");
     }
-
-    VkMemoryRequirements memRequirements;
-    vkGetImageMemoryRequirements(context.device, image, &memRequirements);
-
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = VulkanBuffer::findMemoryType(context, memRequirements.memoryTypeBits, properties);
-
-    if (vkAllocateMemory(context.device, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate image memory!");
-    }
-
-    vkBindImageMemory(context.device, image, imageMemory, 0);
+    allocatedImage.imageView = createImageView(allocatedImage.image,
+                                               format, 
+                                               aspectFlags, 
+                                               mipLevels);
 }
 
-void transitionImageLayout(VulkanApplicationContext &context, VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels) {
-    VkCommandBuffer commandBuffer = VulkanCmdBuffer::beginSingleTimeCommands(context);
+void transitionImageLayout(VkImage image, 
+                           VkFormat format, 
+                           VkImageLayout oldLayout, 
+                           VkImageLayout newLayout, 
+                           uint32_t mipLevels) {
+    VkCommandBuffer commandBuffer = VulkanCmdBuffer::beginSingleTimeCommands();
     VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     barrier.oldLayout = oldLayout;
@@ -104,11 +127,11 @@ void transitionImageLayout(VulkanApplicationContext &context, VkImage image, VkF
         1, &barrier
     );
     
-    VulkanCmdBuffer::endSingleTimeCommands(context, commandBuffer);
+    VulkanCmdBuffer::endSingleTimeCommands(commandBuffer);
 }
 
-void copyBufferToImage(VulkanApplicationContext &context, VkBuffer buffer, VkImage image, uint32_t width, uint32_t height) {
-    VkCommandBuffer commandBuffer = VulkanCmdBuffer::beginSingleTimeCommands(context);
+void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height) {
+    VkCommandBuffer commandBuffer = VulkanCmdBuffer::beginSingleTimeCommands();
     VkBufferImageCopy region{};
     region.bufferOffset = 0;
     region.bufferRowLength = 0;
@@ -135,24 +158,23 @@ void copyBufferToImage(VulkanApplicationContext &context, VkBuffer buffer, VkIma
         &region
     );
 
-    VulkanCmdBuffer::endSingleTimeCommands(context, commandBuffer);
+    VulkanCmdBuffer::endSingleTimeCommands(commandBuffer);
 }
 
-void generateMipmaps(VulkanApplicationContext &context, 
-                    VkImage image,
-                    VkFormat imageFormat,
-                    int32_t texWidth,
-                    int32_t texHeight,
-                    uint32_t mipLevels) {
+void generateMipmaps(VkImage image,
+                     VkFormat imageFormat,
+                     int32_t texWidth,
+                     int32_t texHeight,
+                     uint32_t mipLevels) {
     // Check if image format supports linear blitting
     VkFormatProperties formatProperties;
-    vkGetPhysicalDeviceFormatProperties(context.physicalDevice, imageFormat, &formatProperties);
+    vkGetPhysicalDeviceFormatProperties(VulkanGlobal::context.physicalDevice, imageFormat, &formatProperties);
 
     if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) {
         throw std::runtime_error("texture image format does not support linear blitting!");
     }
 
-    VkCommandBuffer commandBuffer = VulkanCmdBuffer::beginSingleTimeCommands(context);
+    VkCommandBuffer commandBuffer = VulkanCmdBuffer::beginSingleTimeCommands();
 
     VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -227,74 +249,49 @@ void generateMipmaps(VulkanApplicationContext &context,
         0, nullptr,
         1, &barrier);
 
-    VulkanCmdBuffer::endSingleTimeCommands(context, commandBuffer);
+    VulkanCmdBuffer::endSingleTimeCommands(commandBuffer);
 }
 
-void createTextureImage(VulkanApplicationContext &context,
-                        std::string path,
-                        VkImage &textureImage,
-                        VkDeviceMemory &textureImageMemory,
+void createTextureImage(std::string path,
+                        VulkanImage &allocatedImage,
                         uint32_t &mipLevels) {
     int texWidth, texHeight, texChannels;
     //std::string path = path_prefix + "/textures/viking_room.png";
-    stbi_uc* pixels = stbi_load(path.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+    StbImageImpl tex(path, texWidth, texHeight, texChannels);
+
     mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
 
     VkDeviceSize imageSize = texWidth * texHeight * 4;
 
-    if (!pixels) {
+    if (!tex.pixels) {
         throw std::runtime_error("failed to load texture image!");
     }
 
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-    VulkanBuffer::createBuffer(context,
-                              imageSize,
-                              VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
-                              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 
-                              stagingBuffer, 
-                              stagingBufferMemory);
+    VulkanMemory::VulkanBuffer<unsigned char> stagingBuffer;
+    stagingBuffer.create(tex.pixels, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-    void* data;
-    vkMapMemory(context.device, stagingBufferMemory, 0, imageSize, 0, &data);
-    memcpy(data, pixels, static_cast<size_t>(imageSize));
-    vkUnmapMemory(context.device, stagingBufferMemory);
-    stbi_image_free(pixels);
-
-    createImage(context, 
-                texWidth, 
+    createImage(texWidth, 
                 texHeight, 
                 mipLevels, 
                 VK_SAMPLE_COUNT_1_BIT, 
                 VK_FORMAT_R8G8B8A8_SRGB, 
                 VK_IMAGE_TILING_OPTIMAL, 
                 VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, 
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 
-                textureImage, 
-                textureImageMemory);    
+                VK_IMAGE_ASPECT_COLOR_BIT,
+                VMA_MEMORY_USAGE_GPU_ONLY, 
+                allocatedImage);    
     
-    transitionImageLayout(context, 
-                          textureImage, 
+    transitionImageLayout(allocatedImage.image, 
                           VK_FORMAT_R8G8B8A8_SRGB,
                           VK_IMAGE_LAYOUT_UNDEFINED, 
                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                           mipLevels);
-    copyBufferToImage(context, stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
-    generateMipmaps(context, textureImage, VK_FORMAT_R8G8B8A8_SRGB, texWidth, texHeight, mipLevels);
-
-    vkDestroyBuffer(context.device, stagingBuffer, nullptr);
-    vkFreeMemory(context.device, stagingBufferMemory, nullptr);
+    copyBufferToImage(stagingBuffer.buffer, allocatedImage.image, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+    generateMipmaps(allocatedImage.image, VK_FORMAT_R8G8B8A8_SRGB, texWidth, texHeight, mipLevels);
+    stagingBuffer.destroy();
 }
 
-void createTextureImageView(VulkanApplicationContext &context,
-                            VkImage &textureImage,
-                            VkImageView &textureImageView,
-                            uint32_t &mipLevels) {
-    textureImageView = 
-        createImageView(context, textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, mipLevels);
-}
-
-void createTextureSampler(VulkanApplicationContext &context, VkSampler &textureSampler, uint32_t &mipLevels) {
+void createTextureSampler(VkSampler &textureSampler, uint32_t &mipLevels) {
     VkSamplerCreateInfo samplerInfo{};
     samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     samplerInfo.magFilter = VK_FILTER_LINEAR;
@@ -313,10 +310,9 @@ void createTextureSampler(VulkanApplicationContext &context, VkSampler &textureS
     samplerInfo.maxLod = static_cast<float>(mipLevels);
     samplerInfo.mipLodBias = 0.0f; // Optional
 
-    if (vkCreateSampler(context.device, &samplerInfo, nullptr, &textureSampler) != VK_SUCCESS) {
+    if (vkCreateSampler(VulkanGlobal::context.device, &samplerInfo, nullptr, &textureSampler) != VK_SUCCESS) {
         throw std::runtime_error("failed to create texture sampler!");
     }
 }
 
 }
-#endif

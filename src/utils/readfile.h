@@ -1,5 +1,7 @@
-#ifndef VULKAN_READFILE_H
-#define VULKAN_READFILE_H
+#pragma once
+
+#include <string>
+#include <fstream>
 
 static std::vector<char> readFile(const std::string& filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
@@ -15,5 +17,3 @@ static std::vector<char> readFile(const std::string& filename) {
 
     return buffer;
 }
-
-#endif

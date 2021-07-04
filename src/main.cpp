@@ -1,39 +1,24 @@
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
-
 #include <iostream>
 #include <stdexcept>
 #include <cstdlib>
 #include <vector>
-#include <optional>
-#include <set>
-#include <cstdint> // Necessary for UINT32_MAX
-#include <algorithm> // Necessary for std::min/std::max
-#include <fstream>
 #include <array>
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#define GLM_ENABLE_EXPERIMENTAL
-#include <glm/gtx/hash.hpp>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <unordered_map>
+#include "utils/vulkan.h"
 #include "app-context/VulkanApplicationContext.h"
-#include "scene/models/mesh.h"
-#include "utils/CommandUtils.h"
-#include "utils/RootDir.h"
-#include "utils/readfile.h"
-#include "utils/BufferUtils.h"
-#include "utils/ImageUtils.h"
-#include "utils/Camera.h"
+#include "app-context/VulkanGlobal.h"
 #include "app-context/VulkanSwapchain.h"
-#include "scene/models/TexturedModel.h"
-#include "scene/models/UntexturedModel.h"
+#include "utils/RootDir.h"
+#include "memory/VulkanBuffer.h"
+#include "utils/glm.h"
+#include "utils/Camera.h"
+#include "scene/mesh.h"
+#include "scene/TexturedModel.h"
+#include "scene/UntexturedModel.h"
+#include "scene/ScreenQuadModel.h"
 #include "render-context/OffscreenRenderContext.h"
+#include "render-context/PostProcessRenderContext.h"
 #include "pipeline/VulkanPipeline.h"
 #include "pipeline/VulkanDescriptorSet.h"
-#include "render-context/PostProcessRenderContext.h"
-#include "scene/models/ScreenQuadModel.h"
 // TODO: Organize includes!
 
 const std::string path_prefix = std::string(ROOT_DIR) + "resources/";
@@ -49,17 +34,12 @@ Camera camera(glm::vec3(3.0f, 1.0f, 0.0f));
 class HelloDogApplication {
 public:
     void run() {
-        initWindow();
         initVulkan();
         mainLoop();
         cleanup();
     }
     
 private:
-    GLFWwindow* window;
-
-    // Application context - manages device, surface, queues and command pool.
-    VulkanApplicationContext appContext;
     // Swapchain context - holds swapchain and its images and image views.
     VulkanSwapchain swapchainContext;
 
@@ -92,8 +72,7 @@ private:
     UntexturedVulkanModel lightCubeModel;
 
     // Uniform buffers for models in the main scene.
-    std::vector<VkBuffer> sharedUniformBuffers;
-    std::vector<VkDeviceMemory> sharedUniformBuffersMemory;
+    std::vector<VulkanMemory::VulkanBuffer<SharedUniformBufferObject> > sharedUniformBuffers;
     SharedUniformBufferObject sharedUbo{};
     UniformBufferObject dogeUbo{};
     UniformBufferObject cheemsUbo{};
@@ -120,42 +99,33 @@ private:
 
     // Initializing layouts and models.
     void initScene() {
-        VulkanDescriptorSet::singeTextureLayout(appContext, singleTextureDescriptorLayout);
-        VulkanDescriptorSet::untexturedLayout(appContext, lightCubeDescriptorLayout);
-        VulkanDescriptorSet::screenQuadLayout(appContext, screenQuadDescriptorLayout);
+        VulkanDescriptorSet::singeTextureLayout(singleTextureDescriptorLayout);
+        VulkanDescriptorSet::untexturedLayout(lightCubeDescriptorLayout);
+        VulkanDescriptorSet::screenQuadLayout(screenQuadDescriptorLayout);
         
         VkDeviceSize bufferSize = sizeof(SharedUniformBufferObject);
         sharedUniformBuffers.resize(swapchainContext.swapChainImageViews.size());
-        sharedUniformBuffersMemory.resize(swapchainContext.swapChainImageViews.size());
 
         for (size_t i = 0; i < swapchainContext.swapChainImageViews.size(); i++) {
-            VulkanBuffer::createBuffer(
-                appContext,
-                bufferSize,
-                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                sharedUniformBuffers[i],
-                sharedUniformBuffersMemory[i]);
+            sharedUniformBuffers[i].allocate(bufferSize,
+                                             VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, 
+                                             VMA_MEMORY_USAGE_CPU_TO_GPU);
         }
-        dogeModel.init(&appContext,
-                      &singleTextureDescriptorLayout,
-                      swapchainContext.swapChainImages.size(),
-                      path_prefix + "/models/buffDoge.obj",
-                      path_prefix + "/textures/Doge",
-                      &sharedUniformBuffers,
-                      &sharedUniformBuffersMemory);
-        cheemsModel.init(&appContext,
-                         &singleTextureDescriptorLayout,
+        
+        dogeModel.init(&singleTextureDescriptorLayout,
+                       swapchainContext.swapChainImages.size(),
+                       path_prefix + "/models/buffDoge.obj",
+                       path_prefix + "/textures/Doge",
+                       &sharedUniformBuffers);
+        cheemsModel.init(&singleTextureDescriptorLayout,
                          swapchainContext.swapChainImages.size(),
                          path_prefix + "/models/cheems.obj",
                          path_prefix + "/textures/Cheems",
-                         &sharedUniformBuffers,
-                         &sharedUniformBuffersMemory);
+                         &sharedUniformBuffers);
         dogModels.push_back(dogeModel);
         dogModels.push_back(cheemsModel);
 
-        VulkanPipeline::createGraphicsPipeline(appContext,
-                                               swapchainContext.swapChainExtent,
+        VulkanPipeline::createGraphicsPipeline(swapchainContext.swapChainExtent,
                                                &singleTextureDescriptorLayout,
                                                offscreenRenderContext.renderPass,
                                                path_prefix + "/shaders/generated/textured-vert.spv",
@@ -163,15 +133,12 @@ private:
                                                texturedModelPipelineLayout,
                                                texturedModelPipeline);
 
-        lightCubeModel.init(&appContext,
-                            &lightCubeDescriptorLayout,
+        lightCubeModel.init(&lightCubeDescriptorLayout,
                             swapchainContext.swapChainImages.size(),
                             path_prefix + "/models/cube.obj",
-                            &sharedUniformBuffers,
-                            &sharedUniformBuffersMemory);
+                            &sharedUniformBuffers);
 
-        VulkanPipeline::createGraphicsPipeline(appContext,
-                                               swapchainContext.swapChainExtent,
+        VulkanPipeline::createGraphicsPipeline(swapchainContext.swapChainExtent,
                                                &lightCubeDescriptorLayout,
                                                offscreenRenderContext.renderPass,
                                                path_prefix + "/shaders/generated/untextured-vert.spv",
@@ -179,16 +146,12 @@ private:
                                                lightCubePipelineLayout,
                                                lightCubePipeline);
 
-        // Creating screen quad and passing color attachment of offscreen rendre pass as a texture.
-        screenQuadModel.init(&appContext,
-                            &screenQuadDescriptorLayout,
-                            swapchainContext.swapChainImages.size(),
-                            &offscreenRenderContext.colorImage,
-                            &offscreenRenderContext.colorImageMemory,
-                            &offscreenRenderContext.colorImageView);          
+        // Creating screen quad and passing color attachment of offscreen render pass as a texture.
+        screenQuadModel.init(&screenQuadDescriptorLayout,
+                             swapchainContext.swapChainImages.size(),
+                             &offscreenRenderContext.colorImage);          
 
-        VulkanPipeline::createGraphicsPipeline(appContext,
-                                               swapchainContext.swapChainExtent,
+        VulkanPipeline::createGraphicsPipeline(swapchainContext.swapChainExtent,
                                                &screenQuadDescriptorLayout,
                                                postProcessRenderContext.renderPass,
                                                path_prefix + "/shaders/generated/post-process-vert.spv",
@@ -217,20 +180,20 @@ private:
         VkDeviceSize bufferSize = sizeof(sharedUbo);
 
         void* data;
-        vkMapMemory(appContext.device, sharedUniformBuffersMemory[currentImage], 0, bufferSize, 0, &data);
-        memcpy(data, &sharedUbo, (size_t) bufferSize);
-        vkUnmapMemory(appContext.device, sharedUniformBuffersMemory[currentImage]);
+        vmaMapMemory(VulkanGlobal::context.allocator, sharedUniformBuffers[currentImage].allocation, &data);
+        memcpy(data, &sharedUbo, bufferSize);
+        vmaUnmapMemory(VulkanGlobal::context.allocator, sharedUniformBuffers[currentImage].allocation);
     }
 
     void createCommandBuffers() {
         commandBuffers.resize(postProcessRenderContext.swapChainFramebuffers.size());
         VkCommandBufferAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocInfo.commandPool = appContext.commandPool;
+        allocInfo.commandPool = VulkanGlobal::context.commandPool;
         allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         allocInfo.commandBufferCount = (uint32_t) commandBuffers.size();
 
-        if (vkAllocateCommandBuffers(appContext.device, &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
+        if (vkAllocateCommandBuffers(VulkanGlobal::context.device, &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
             throw std::runtime_error("failed to allocate command buffers!");
         }
 
@@ -261,24 +224,11 @@ private:
             vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, texturedModelPipeline);
 
             for(TexturedVulkanModel model : dogModels) {
-                VkBuffer vertexBuffers[] = {model.vertexBuffer};
-                VkDeviceSize offsets[] = {0};
-                vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, vertexBuffers, offsets);
-                vkCmdBindIndexBuffer(commandBuffers[i], model.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-
-                vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, texturedModelPipelineLayout, 0, 1, &model.descriptorSets[i], 0, nullptr);
-                vkCmdDrawIndexed(commandBuffers[i], static_cast<uint32_t>(model.mesh.indices.size()), 1, 0, 0, 0);
+                model.drawCommand(commandBuffers[i], texturedModelPipelineLayout, i);
             }
 
             vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, lightCubePipeline);
-
-            VkBuffer vertexBuffers[] = {lightCubeModel.vertexBuffer};
-            VkDeviceSize offsets[] = {0};
-            vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, vertexBuffers, offsets);
-            vkCmdBindIndexBuffer(commandBuffers[i], lightCubeModel.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-
-            vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, lightCubePipelineLayout, 0, 1, &lightCubeModel.descriptorSets[i], 0, nullptr);
-            vkCmdDrawIndexed(commandBuffers[i], static_cast<uint32_t>(lightCubeModel.mesh.indices.size()), 1, 0, 0, 0);
+            lightCubeModel.drawCommand(commandBuffers[i], lightCubePipelineLayout, i);
             
             vkCmdEndRenderPass(commandBuffers[i]);
 
@@ -293,14 +243,8 @@ private:
             postProcessRenderPassInfo.pClearValues = clearValues.data();
             vkCmdBeginRenderPass(commandBuffers[i], &postProcessRenderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
             vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, screenQuadPipeline);
-            VkBuffer screenQuadVertexBuffers[] = {screenQuadModel.vertexBuffer};
-            VkDeviceSize screenQuadoffsets[] = {0};
-            vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, screenQuadVertexBuffers, screenQuadoffsets);
-            vkCmdBindIndexBuffer(commandBuffers[i], screenQuadModel.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-
-            vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, screenQuadPipelineLayout, 0, 1, &screenQuadModel.descriptorSets[i], 0, nullptr);
-            vkCmdDrawIndexed(commandBuffers[i], static_cast<uint32_t>(screenQuadModel.mesh.indices.size()), 1, 0, 0, 0);
-
+            screenQuadModel.drawCommand(commandBuffers[i], screenQuadPipelineLayout, i);
+            
             vkCmdEndRenderPass(commandBuffers[i]);
             if (vkEndCommandBuffer(commandBuffers[i]) != VK_SUCCESS) {
                 throw std::runtime_error("failed to record command buffer!");
@@ -311,8 +255,8 @@ private:
     void createSemaphores() {
             VkSemaphoreCreateInfo semaphoreInfo{};
             semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-            if (vkCreateSemaphore(appContext.device, &semaphoreInfo, nullptr, &imageAvailableSemaphore) != VK_SUCCESS ||
-                vkCreateSemaphore(appContext.device, &semaphoreInfo, nullptr, &renderFinishedSemaphore) != VK_SUCCESS) {
+            if (vkCreateSemaphore(VulkanGlobal::context.device, &semaphoreInfo, nullptr, &imageAvailableSemaphore) != VK_SUCCESS ||
+                vkCreateSemaphore(VulkanGlobal::context.device, &semaphoreInfo, nullptr, &renderFinishedSemaphore) != VK_SUCCESS) {
 
                 throw std::runtime_error("failed to create semaphores!");
             }
@@ -320,7 +264,7 @@ private:
 
     void drawFrame() {
         uint32_t imageIndex;
-        VkResult result = vkAcquireNextImageKHR(appContext.device, swapchainContext.swapChain, UINT64_MAX, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+        VkResult result = vkAcquireNextImageKHR(VulkanGlobal::context.device, swapchainContext.swapChain, UINT64_MAX, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
 
         if (result == VK_ERROR_OUT_OF_DATE_KHR) {
             return;
@@ -344,7 +288,7 @@ private:
         VkSemaphore signalSemaphores[] = {renderFinishedSemaphore};
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
-        if (vkQueueSubmit(appContext.graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
+        if (vkQueueSubmit(VulkanGlobal::context.graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
             throw std::runtime_error("failed to submit draw command buffer!");
         }
         VkPresentInfoKHR presentInfo{};
@@ -358,63 +302,53 @@ private:
         presentInfo.pImageIndices = &imageIndex;
         presentInfo.pResults = nullptr;
 
-        result = vkQueuePresentKHR(appContext.presentQueue, &presentInfo);
+        result = vkQueuePresentKHR(VulkanGlobal::context.presentQueue, &presentInfo);
 
         if (result != VK_SUCCESS) {
             throw std::runtime_error("failed to present swap chain image!");
         }
-        vkQueueWaitIdle(appContext.presentQueue);
+        vkQueueWaitIdle(VulkanGlobal::context.presentQueue);
     }
 
     void mainLoop() {
-        while (!glfwWindowShouldClose(window)) {
+        while (!glfwWindowShouldClose(VulkanGlobal::context.window)) {
             float currentTime = (float)glfwGetTime();
             deltaTime = currentTime - lastFrame;
             lastFrame = currentTime;
 
-            processInput(window);
+            processInput(VulkanGlobal::context.window);
             glfwPollEvents();
             drawFrame();
         }
 
-        vkDeviceWaitIdle(appContext.device);
-    }
-
-    void initWindow() {
-            glfwInit();
-            // This tells glfw not to use opengl.
-            glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        
-            window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
+        vkDeviceWaitIdle(VulkanGlobal::context.device);
     }
 
     void initVulkan() {
-        appContext.init(window);
-        swapchainContext.init(&appContext);
-        offscreenRenderContext.init(&appContext, &swapchainContext);
-        postProcessRenderContext.init(&appContext, &swapchainContext);
+        swapchainContext.init();
+        offscreenRenderContext.init(&swapchainContext);
+        postProcessRenderContext.init(&swapchainContext);
 
         initScene();
         
         createCommandBuffers();
         createSemaphores();
-        glfwSetCursorPosCallback(window, mouse_callback);
+        glfwSetCursorPosCallback(VulkanGlobal::context.window, mouse_callback);
     }
 
     void cleanupSwapChain() {
-        vkFreeCommandBuffers(appContext.device, appContext.commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
+        vkFreeCommandBuffers(VulkanGlobal::context.device, VulkanGlobal::context.commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
 
         for (size_t i = 0; i < swapchainContext.swapChainImageViews.size(); i++) {
-                vkDestroyBuffer(appContext.device, sharedUniformBuffers[i], nullptr);
-                vkFreeMemory(appContext.device, sharedUniformBuffersMemory[i], nullptr);
+            sharedUniformBuffers[i].destroy();
         }
-    
-        vkDestroyPipeline(appContext.device, texturedModelPipeline, nullptr);
-        vkDestroyPipelineLayout(appContext.device, texturedModelPipelineLayout, nullptr);
-        vkDestroyPipeline(appContext.device, lightCubePipeline, nullptr);
-        vkDestroyPipelineLayout(appContext.device, lightCubePipelineLayout, nullptr);
-        vkDestroyPipeline(appContext.device, screenQuadPipeline, nullptr);
-        vkDestroyPipelineLayout(appContext.device, screenQuadPipelineLayout, nullptr);
+
+        vkDestroyPipeline(VulkanGlobal::context.device, texturedModelPipeline, nullptr);
+        vkDestroyPipelineLayout(VulkanGlobal::context.device, texturedModelPipelineLayout, nullptr);
+        vkDestroyPipeline(VulkanGlobal::context.device, lightCubePipeline, nullptr);
+        vkDestroyPipelineLayout(VulkanGlobal::context.device, lightCubePipelineLayout, nullptr);
+        vkDestroyPipeline(VulkanGlobal::context.device, screenQuadPipeline, nullptr);
+        vkDestroyPipelineLayout(VulkanGlobal::context.device, screenQuadPipelineLayout, nullptr);
         
         offscreenRenderContext.destroy();
         postProcessRenderContext.destroy();
@@ -424,19 +358,18 @@ private:
     void cleanup() {
         cleanupSwapChain();
 
-        vkDestroyDescriptorSetLayout(appContext.device, singleTextureDescriptorLayout, nullptr);
+        vkDestroyDescriptorSetLayout(VulkanGlobal::context.device, singleTextureDescriptorLayout, nullptr);
         dogeModel.destroy();
         cheemsModel.destroy();
-        vkDestroyDescriptorSetLayout(appContext.device, lightCubeDescriptorLayout, nullptr);
+        vkDestroyDescriptorSetLayout(VulkanGlobal::context.device, lightCubeDescriptorLayout, nullptr);
         lightCubeModel.destroy();
-        vkDestroyDescriptorSetLayout(appContext.device, screenQuadDescriptorLayout, nullptr);
+        vkDestroyDescriptorSetLayout(VulkanGlobal::context.device, screenQuadDescriptorLayout, nullptr);
         screenQuadModel.destroy();
 
-        vkDestroySemaphore(appContext.device, renderFinishedSemaphore, nullptr);
-        vkDestroySemaphore(appContext.device, imageAvailableSemaphore, nullptr);
+        vkDestroySemaphore(VulkanGlobal::context.device, renderFinishedSemaphore, nullptr);
+        vkDestroySemaphore(VulkanGlobal::context.device, imageAvailableSemaphore, nullptr);
 
-        appContext.destroy();
-        glfwDestroyWindow(window);
+        //delete VulkanGlobal::context;
         glfwTerminate();
     }
 

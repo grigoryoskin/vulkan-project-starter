@@ -1,59 +1,36 @@
-#ifndef VULKAN_UNTEXTURED_MODEL_H
-#define VULKAN_UNTEXTURED_MODEL_H
+#pragma once
 
-class UntexturedVulkanModel {
+#include <vector>
+#include <string>
+#include "../utils/vulkan.h"
+#include "DrawableModel.h"
+#include "../memory/VulkanBuffer.h"
+
+class UntexturedVulkanModel: public DrawableModel {
     public:
-        VkDescriptorPool descriptorPool;
-        std::vector<VkDescriptorSet> descriptorSets;
-
-        VkBuffer vertexBuffer;
-        VkDeviceMemory vertexBufferMemory;
-        VkBuffer indexBuffer;
-        VkDeviceMemory indexBufferMemory;
-
-        Mesh mesh;
-
-        void init(VulkanApplicationContext *context,
-                  VkDescriptorSetLayout *descriptorSetLayout,
+        void init(VkDescriptorSetLayout *descriptorSetLayout,
                   int swapChainSize,
                   std::string modelPath,
-                  std::vector<VkBuffer> *sharedUniformBuffers,
-                  std::vector<VkDeviceMemory> *sharedUniformBuffersMemory) {
-            this->context = context; 
+                  std::vector<VulkanMemory::VulkanBuffer<SharedUniformBufferObject> >* sharedUniformBuffers) {
             this->swapChainSize = swapChainSize;
             this->descriptorSetLayout = descriptorSetLayout;
             mesh = Mesh(modelPath);
             initVertexBuffer();
             initIndexBuffer();
             this->sharedUniformBuffers = sharedUniformBuffers;
-            this->sharedUniformBuffersMemory = sharedUniformBuffersMemory;
             initDescriptorPool();
             initDescriptorSets();
         }
 
         void destroy() {
-            vkDestroyBuffer(context->device, vertexBuffer, nullptr);
-            vkFreeMemory(context->device, vertexBufferMemory, nullptr);
-            vkDestroyBuffer(context->device, indexBuffer, nullptr);
-            vkFreeMemory(context->device, indexBufferMemory, nullptr);
-
-            vkDestroyDescriptorPool(context->device, descriptorPool, nullptr);
+            indexBuffer.destroy();
+            vertexBuffer.destroy();
+            vkDestroyDescriptorPool(VulkanGlobal::context.device, descriptorPool, nullptr);
         }
 
     private: 
-        VulkanApplicationContext *context;
-        VkDescriptorSetLayout *descriptorSetLayout;
-        std::vector<VkBuffer> *sharedUniformBuffers;
-        std::vector<VkDeviceMemory> *sharedUniformBuffersMemory;
+        std::vector<VulkanMemory::VulkanBuffer<SharedUniformBufferObject> >* sharedUniformBuffers;
         int swapChainSize;
-
-        void initVertexBuffer() {
-            VulkanBuffer::createVertexBuffer( *context, mesh.vertices, vertexBuffer, vertexBufferMemory);
-        }
-
-        void initIndexBuffer() {
-            VulkanBuffer::createIndexBuffer( *context, mesh.indices, indexBuffer, indexBufferMemory);
-        }
 
         void initDescriptorPool() {
             std::array<VkDescriptorPoolSize, 1> poolSizes{};
@@ -66,7 +43,7 @@ class UntexturedVulkanModel {
             poolInfo.pPoolSizes = poolSizes.data();
             poolInfo.maxSets = static_cast<uint32_t>(swapChainSize);
 
-            if (vkCreateDescriptorPool(context->device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+            if (vkCreateDescriptorPool(VulkanGlobal::context.device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create descriptor pool!");
             }
         }
@@ -80,13 +57,13 @@ class UntexturedVulkanModel {
             allocInfo.pSetLayouts = layouts.data();
 
             descriptorSets.resize(swapChainSize);
-            if (vkAllocateDescriptorSets(context->device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
+            if (vkAllocateDescriptorSets(VulkanGlobal::context.device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
                 throw std::runtime_error("failed to allocate descriptor sets!");
             }
 
             for (size_t i = 0; i < swapChainSize; i++) {
                 VkDescriptorBufferInfo sharedBufferInfo{};
-                sharedBufferInfo.buffer = (*sharedUniformBuffers)[i];
+                sharedBufferInfo.buffer = (*sharedUniformBuffers)[i].buffer;
                 sharedBufferInfo.offset = 0;
                 sharedBufferInfo.range = sizeof(SharedUniformBufferObject);
 
@@ -100,9 +77,7 @@ class UntexturedVulkanModel {
                 descriptorWrites[0].descriptorCount = 1;
                 descriptorWrites[0].pBufferInfo = &sharedBufferInfo;
                 
-                vkUpdateDescriptorSets(context->device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+                vkUpdateDescriptorSets(VulkanGlobal::context.device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
             }
         }
 };
-
-#endif

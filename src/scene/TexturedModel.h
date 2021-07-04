@@ -1,40 +1,29 @@
-#ifndef VULKAN_SIMPLE_MODEL_H
-#define VULKAN_SIMPLE_MODEL_H
+#pragma once
 
-class TexturedVulkanModel {
+#include <string>
+#include <vector>
+#include "../utils/vulkan.h"
+#include "DrawableModel.h"
+#include "../memory/VulkanBuffer.h"
+#include "../memory/VulkanImage.h"
+
+class TexturedVulkanModel: public DrawableModel{
     public:
-        VkDescriptorPool descriptorPool;
-        std::vector<VkDescriptorSet> descriptorSets;
-
-        VkBuffer vertexBuffer;
-        VkDeviceMemory vertexBufferMemory;
-        VkBuffer indexBuffer;
-        VkDeviceMemory indexBufferMemory;
-        std::vector<VkBuffer> uniformBuffers;
-        std::vector<VkDeviceMemory> uniformBuffersMemory;
-
+        std::vector<VulkanMemory::VulkanBuffer<UniformBufferObject> > uniformBuffers;
+        
         uint32_t mipLevels;
-        VkImage textureImage;
-        VkDeviceMemory textureImageMemory;
-        VkImageView textureImageView;
+        VulkanImage::VulkanImage textureImage;
         VkSampler textureSampler;
 
-        Mesh mesh;
-
-        void init(VulkanApplicationContext *context,
-                  VkDescriptorSetLayout *descriptorSetLayout,
+        void init(VkDescriptorSetLayout *descriptorSetLayout,
                   int swapChainSize,
                   std::string modelPath,
                   std::string texturePath,
-                  std::vector<VkBuffer> *sharedUniformBuffers,
-                  std::vector<VkDeviceMemory> *sharedUniformBuffersMemory) {
-            this->context = context; 
+                  std::vector<VulkanMemory::VulkanBuffer<SharedUniformBufferObject> >* sharedUniformBuffers) {
             this->swapChainSize = swapChainSize;
             this->sharedUniformBuffers = sharedUniformBuffers;
-            this->sharedUniformBuffersMemory = sharedUniformBuffersMemory;
             this->descriptorSetLayout = descriptorSetLayout;
             initTextureImage(texturePath);
-            initTextureImageView();
             initTextureSampler();
             mesh = Mesh(modelPath);
             initVertexBuffer();
@@ -45,57 +34,37 @@ class TexturedVulkanModel {
         }
 
         void destroy() {
-            vkDestroySampler(context->device, textureSampler, nullptr);
-            vkDestroyImageView(context->device, textureImageView, nullptr);
-            vkDestroyImage(context->device, textureImage, nullptr);
-            vkFreeMemory(context->device, textureImageMemory, nullptr);
+            vkDestroySampler(VulkanGlobal::context.device, textureSampler, nullptr);
+            textureImage.destroy();
 
-            vkDestroyBuffer(context->device, vertexBuffer, nullptr);
-            vkFreeMemory(context->device, vertexBufferMemory, nullptr);
-            vkDestroyBuffer(context->device, indexBuffer, nullptr);
-            vkFreeMemory(context->device, indexBufferMemory, nullptr);
-
+            vertexBuffer.destroy();
+            indexBuffer.destroy();
             for (size_t i = 0; i < swapChainSize; i++) {
-                vkDestroyBuffer(context->device, uniformBuffers[i], nullptr);
-                vkFreeMemory(context->device, uniformBuffersMemory[i], nullptr);
+                uniformBuffers[i].destroy();
             }
-            vkDestroyDescriptorPool(context->device, descriptorPool, nullptr);
+
+            vkDestroyDescriptorPool(VulkanGlobal::context.device, descriptorPool, nullptr);
         }
 
         void updateUniformBuffer(UniformBufferObject &ubo, uint32_t currentImage) {
             VkDeviceSize bufferSize = sizeof(ubo);
 
             void* data;
-            vkMapMemory(context->device, uniformBuffersMemory[currentImage], 0, bufferSize, 0, &data);
-            memcpy(data, &ubo, (size_t) bufferSize);
-            vkUnmapMemory(context->device, uniformBuffersMemory[currentImage]);
+	        vmaMapMemory(VulkanGlobal::context.allocator, uniformBuffers[currentImage].allocation, &data);
+	        memcpy(data, &ubo, bufferSize);
+	        vmaUnmapMemory(VulkanGlobal::context.allocator, uniformBuffers[currentImage].allocation);
         }
-    private: 
-        VulkanApplicationContext *context;
-        VkDescriptorSetLayout *descriptorSetLayout;
-        std::vector<VkBuffer> *sharedUniformBuffers;
-        std::vector<VkDeviceMemory> *sharedUniformBuffersMemory;
+
+    private:
+        std::vector<VulkanMemory::VulkanBuffer<SharedUniformBufferObject> >* sharedUniformBuffers;
         int swapChainSize;
         
-
         void initTextureImage(std::string texturePath) {
-            VulkanImage::createTextureImage( *context, texturePath, textureImage, textureImageMemory, mipLevels);
-        }
-
-        void initTextureImageView() {
-            VulkanImage::createTextureImageView( *context, textureImage, textureImageView, mipLevels);
+            VulkanImage::createTextureImage(texturePath, textureImage, mipLevels);
         }
 
         void initTextureSampler() {
-            VulkanImage::createTextureSampler( *context, textureSampler, mipLevels);
-        }
-
-        void initVertexBuffer() {
-            VulkanBuffer::createVertexBuffer( *context, mesh.vertices, vertexBuffer, vertexBufferMemory);
-        }
-
-        void initIndexBuffer() {
-            VulkanBuffer::createIndexBuffer( *context, mesh.indices, indexBuffer, indexBufferMemory);
+            VulkanImage::createTextureSampler(textureSampler, mipLevels);
         }
 
         void initDescriptorPool() {
@@ -113,7 +82,7 @@ class TexturedVulkanModel {
             poolInfo.pPoolSizes = poolSizes.data();
             poolInfo.maxSets = static_cast<uint32_t>(swapChainSize);
 
-            if (vkCreateDescriptorPool(context->device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+            if (vkCreateDescriptorPool(VulkanGlobal::context.device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create descriptor pool!");
             }
         }
@@ -127,23 +96,23 @@ class TexturedVulkanModel {
             allocInfo.pSetLayouts = layouts.data();
 
             descriptorSets.resize(swapChainSize);
-            if (vkAllocateDescriptorSets(context->device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
+            if (vkAllocateDescriptorSets(VulkanGlobal::context.device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
                 throw std::runtime_error("failed to allocate descriptor sets!");
             }
 
             for (size_t i = 0; i < swapChainSize; i++) {
                 VkDescriptorBufferInfo bufferInfo{};
-                bufferInfo.buffer = uniformBuffers[i];
+                bufferInfo.buffer = uniformBuffers[i].buffer;
                 bufferInfo.offset = 0;
                 bufferInfo.range = sizeof(UniformBufferObject);
 
                 VkDescriptorImageInfo imageInfo{};
                 imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                imageInfo.imageView = textureImageView;
+                imageInfo.imageView = textureImage.imageView;
                 imageInfo.sampler = textureSampler;
 
                 VkDescriptorBufferInfo sharedBufferInfo{};
-                sharedBufferInfo.buffer = (*sharedUniformBuffers)[i];
+                sharedBufferInfo.buffer = (*sharedUniformBuffers)[i].buffer;
                 sharedBufferInfo.offset = 0;
                 sharedBufferInfo.range = sizeof(SharedUniformBufferObject);
 
@@ -173,19 +142,18 @@ class TexturedVulkanModel {
                 descriptorWrites[2].descriptorCount = 1;
                 descriptorWrites[2].pBufferInfo = &sharedBufferInfo;
 
-                vkUpdateDescriptorSets(context->device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+                vkUpdateDescriptorSets(VulkanGlobal::context.device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
             }
         }
 
         void initUniformBuffers() {
             VkDeviceSize bufferSize = sizeof(UniformBufferObject);
             uniformBuffers.resize(swapChainSize);
-            uniformBuffersMemory.resize(swapChainSize);
 
             for (size_t i = 0; i < swapChainSize; i++) {
-                VulkanBuffer::createBuffer(*context, bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffers[i], uniformBuffersMemory[i]);
+                uniformBuffers[i].allocate(bufferSize,
+                                           VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, 
+                                           VMA_MEMORY_USAGE_CPU_TO_GPU);
             }
         }
 };
-
-#endif

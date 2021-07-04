@@ -1,9 +1,11 @@
-#ifndef VULKAN_DESCRIPTOR_SET_H
-#define VULKAN_DESCRIPTOR_SET_H
+#pragma once
+
+#include <iostream>
+#include "../utils/vulkan.h"
 
 namespace VulkanDescriptorSet {
 
-void singeTextureLayout( VulkanApplicationContext &appContext, VkDescriptorSetLayout &descriptorSetLayout) {
+void singeTextureLayout(VkDescriptorSetLayout &descriptorSetLayout) {
     VkDescriptorSetLayoutBinding uboLayoutBinding{};
     uboLayoutBinding.binding = 0;
     uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -31,12 +33,12 @@ void singeTextureLayout( VulkanApplicationContext &appContext, VkDescriptorSetLa
     layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
     layoutInfo.pBindings = bindings.data();
 
-    if (vkCreateDescriptorSetLayout(appContext.device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
+    if (vkCreateDescriptorSetLayout(VulkanGlobal::context.device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor set layout!");
     }
 }
 
-void untexturedLayout( VulkanApplicationContext &appContext, VkDescriptorSetLayout &descriptorSetLayout) {
+void untexturedLayout(VkDescriptorSetLayout &descriptorSetLayout) {
     VkDescriptorSetLayoutBinding sharedUboLayoutBinding{};
     sharedUboLayoutBinding.binding = 0;
     sharedUboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -50,12 +52,12 @@ void untexturedLayout( VulkanApplicationContext &appContext, VkDescriptorSetLayo
     layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
     layoutInfo.pBindings = bindings.data();
 
-    if (vkCreateDescriptorSetLayout(appContext.device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
+    if (vkCreateDescriptorSetLayout(VulkanGlobal::context.device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor set layout!");
     }
 }
 
-void screenQuadLayout( VulkanApplicationContext &appContext, VkDescriptorSetLayout &descriptorSetLayout) {
+void screenQuadLayout(VkDescriptorSetLayout &descriptorSetLayout) {
     VkDescriptorSetLayoutBinding samplerLayoutBinding{};
     samplerLayoutBinding.binding = 0;
     samplerLayoutBinding.descriptorCount = 1;
@@ -69,10 +71,9 @@ void screenQuadLayout( VulkanApplicationContext &appContext, VkDescriptorSetLayo
     layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
     layoutInfo.pBindings = bindings.data();
 
-    if (vkCreateDescriptorSetLayout(appContext.device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
+    if (vkCreateDescriptorSetLayout(VulkanGlobal::context.device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor set layout!");
     }
 }
 
 }
-#endif

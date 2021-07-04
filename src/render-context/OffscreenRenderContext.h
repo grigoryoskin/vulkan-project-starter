@@ -1,5 +1,9 @@
-#ifndef VULKAN_RENDER_CONTEXT_H
-#define VULKAN_RENDER_CONTEXT_H
+#pragma once
+
+#include <iostream>
+#include <vector>
+#include "../utils/vulkan.h"
+#include "../memory/VulkanImage.h"
 
 class OffscreenRenderContext {
     public:
@@ -7,16 +11,10 @@ class OffscreenRenderContext {
         // We need only one framebuffer for off screen rendering, since only one drawing operation is performend at once.
         VkFramebuffer framebuffer;
 
-        VkImage colorImage;
-        VkDeviceMemory colorImageMemory;
-        VkImageView colorImageView;
-
-        VkImage depthImage;
-        VkDeviceMemory depthImageMemory;
-        VkImageView depthImageView;
+        VulkanImage::VulkanImage colorImage;
+        VulkanImage::VulkanImage depthImage;
         
-        void init(VulkanApplicationContext *context, VulkanSwapchain *swapchainContext) {
-            this->context = context;
+        void init(VulkanSwapchain *swapchainContext) {
             this->swapchainContext = swapchainContext;
             createColorResources();
             createDepthResources();
@@ -25,28 +23,20 @@ class OffscreenRenderContext {
         }
 
         void destroy() {
-            vkDestroyImageView(context->device, colorImageView, nullptr);
-            vkDestroyImage(context->device, colorImage, nullptr);
-            vkFreeMemory(context->device, colorImageMemory, nullptr);
-
-            vkDestroyImageView(context->device, depthImageView, nullptr);
-            vkDestroyImage(context->device, depthImage, nullptr);
-            vkFreeMemory(context->device, depthImageMemory, nullptr);
-
-            vkDestroyFramebuffer(context->device, framebuffer, nullptr);
-
-            vkDestroyRenderPass(context->device, renderPass, nullptr);
+            colorImage.destroy();
+            depthImage.destroy();
+            vkDestroyFramebuffer(VulkanGlobal::context.device, framebuffer, nullptr);
+            vkDestroyRenderPass(VulkanGlobal::context.device, renderPass, nullptr);
         }
 
     private:
-        VulkanApplicationContext *context;
         VulkanSwapchain *swapchainContext;
         
         void createRenderPass() {
             // Color attachment for a framebuffer.
             VkAttachmentDescription colorAttachment{};
             colorAttachment.format = swapchainContext->swapChainImageFormat;
-            colorAttachment.samples = context->msaaSamples;
+            colorAttachment.samples = VulkanGlobal::context.msaaSamples;
             // Clear the frame before render.
             colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
             // Rendered contents will be stored in memory and can be read later.
@@ -65,7 +55,7 @@ class OffscreenRenderContext {
 
             VkAttachmentDescription depthAttachment{};
             depthAttachment.format = findDepthFormat();
-            depthAttachment.samples = context->msaaSamples;
+            depthAttachment.samples = VulkanGlobal::context.msaaSamples;
             depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
             depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
             depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -113,15 +103,15 @@ class OffscreenRenderContext {
             renderPassInfo.dependencyCount = 2;
             renderPassInfo.pDependencies = dependencies.data();
             
-            if (vkCreateRenderPass(context->device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
+            if (vkCreateRenderPass(VulkanGlobal::context.device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create render pass!");
             }
         }
 
         void createFramebuffers() {            
             std::array<VkImageView, 2> attachments = {
-                colorImageView,
-                depthImageView
+                colorImage.imageView,
+                depthImage.imageView
             };
 
             VkFramebufferCreateInfo framebufferInfo{};
@@ -133,13 +123,13 @@ class OffscreenRenderContext {
             framebufferInfo.height = swapchainContext->swapChainExtent.height;
             framebufferInfo.layers = 1;
 
-            if (vkCreateFramebuffer(context->device, &framebufferInfo, nullptr, &framebuffer) != VK_SUCCESS) {
+            if (vkCreateFramebuffer(VulkanGlobal::context.device, &framebufferInfo, nullptr, &framebuffer) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create framebuffer!");
             }
         }
 
         VkFormat findDepthFormat() {
-            return context->findSupportedFormat(
+            return VulkanGlobal::context.findSupportedFormat(
                 {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT},
                 VK_IMAGE_TILING_OPTIMAL,
                 VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
@@ -152,36 +142,30 @@ class OffscreenRenderContext {
 
         void createDepthResources() {
             VkFormat depthFormat = findDepthFormat();
-            VulkanImage::createImage(*context,
-                                     swapchainContext->swapChainExtent.width,
+            VulkanImage::createImage(swapchainContext->swapChainExtent.width,
                                      swapchainContext->swapChainExtent.height,
                                      1,
                                      VK_SAMPLE_COUNT_1_BIT,
                                      depthFormat,
                                      VK_IMAGE_TILING_OPTIMAL,
                                      VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-                                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                                     depthImage,
-                                     depthImageMemory);
-            depthImageView = VulkanImage::createImageView(*context, depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
+                                     VK_IMAGE_ASPECT_DEPTH_BIT,
+                                     VMA_MEMORY_USAGE_GPU_ONLY,
+                                     depthImage);
         }
 
         void createColorResources() {
             VkFormat colorFormat = swapchainContext->swapChainImageFormat;
 
-            VulkanImage::createImage(*context,
-                                     swapchainContext->swapChainExtent.width,
+            VulkanImage::createImage(swapchainContext->swapChainExtent.width,
                                      swapchainContext->swapChainExtent.height,
                                      1,
                                      VK_SAMPLE_COUNT_1_BIT,
                                      colorFormat,
                                      VK_IMAGE_TILING_OPTIMAL,
                                      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-                                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                                     colorImage,
-                                     colorImageMemory);
-            colorImageView = VulkanImage::createImageView(*context, colorImage, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+                                     VK_IMAGE_ASPECT_COLOR_BIT,
+                                     VMA_MEMORY_USAGE_GPU_ONLY,
+                                     colorImage);
         }
 };
-
-#endif

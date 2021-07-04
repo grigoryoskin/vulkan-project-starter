@@ -1,17 +1,16 @@
-#ifndef VULKAN_COMMAND_UTILS_H
-#define VULKAN_COMMAND_UTILS_H
+#pragma once
 
 namespace VulkanCmdBuffer{
 
-VkCommandBuffer beginSingleTimeCommands(VulkanApplicationContext &context) {
+VkCommandBuffer beginSingleTimeCommands() {
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandPool = context.commandPool;
+    allocInfo.commandPool = VulkanGlobal::context.commandPool;
     allocInfo.commandBufferCount = 1;
 
     VkCommandBuffer commandBuffer;
-    vkAllocateCommandBuffers(context.device, &allocInfo, &commandBuffer);
+    vkAllocateCommandBuffers(VulkanGlobal::context.device, &allocInfo, &commandBuffer);
 
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -22,7 +21,7 @@ VkCommandBuffer beginSingleTimeCommands(VulkanApplicationContext &context) {
     return commandBuffer;
 }
 
-void endSingleTimeCommands(VulkanApplicationContext &context, VkCommandBuffer commandBuffer) {
+void endSingleTimeCommands(VkCommandBuffer commandBuffer) {
     vkEndCommandBuffer(commandBuffer);
 
     VkSubmitInfo submitInfo{};
@@ -30,10 +29,9 @@ void endSingleTimeCommands(VulkanApplicationContext &context, VkCommandBuffer co
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &commandBuffer;
 
-    vkQueueSubmit(context.graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
-    vkQueueWaitIdle(context.graphicsQueue);
+    vkQueueSubmit(VulkanGlobal::context.graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(VulkanGlobal::context.graphicsQueue);
 
-    vkFreeCommandBuffers(context.device, context.commandPool, 1, &commandBuffer);
+    vkFreeCommandBuffers(VulkanGlobal::context.device, VulkanGlobal::context.commandPool, 1, &commandBuffer);
 }
 }
-#endif

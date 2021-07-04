@@ -31,7 +31,8 @@ add_subdirectory(external/obj-loader)
 include_directories( PUBLIC external/glfw/include
 					 PUBLIC external/glm
 					 PUBLIC external/stb
-					 PUBLIC external/obj-loader)
+					 PUBLIC external/obj-loader
+					 PUBLIC external/memory-allocator-hpp)
 
 target_link_directories(${PROJECT_NAME} PRIVATE external/glfw/src)
 

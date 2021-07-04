@@ -1,32 +1,21 @@
-#ifndef VULKAN_SCREEN_QUAD_MODEL_H
-#define VULKAN_SCREEN_QUAD_MODEL_H
+#pragma once
 
-class ScreenQuadVulkanModel {
+#include <array>
+#include <vector>
+#include "../utils/vulkan.h"
+#include "DrawableModel.h"
+#include "../memory/VulkanBuffer.h"
+#include "../memory/VulkanImage.h"
+
+class ScreenQuadVulkanModel: public DrawableModel {
     public:
-        VkDescriptorPool descriptorPool;
-        std::vector<VkDescriptorSet> descriptorSets;
-
-        VkBuffer vertexBuffer;
-        VkDeviceMemory vertexBufferMemory;
-        VkBuffer indexBuffer;
-        VkDeviceMemory indexBufferMemory;
-
         VkSampler textureSampler;
 
-        Mesh mesh;
-        
-        void init(VulkanApplicationContext *context,
-                  VkDescriptorSetLayout *descriptorSetLayout,
+        void init(VkDescriptorSetLayout *descriptorSetLayout,
                   int swapChainSize,
-                  VkImage *textureImage,
-                  VkDeviceMemory *textureImageMemory,
-                  VkImageView *textureImageView
-            ) {
-           this->context = context;      
+                  VulkanImage::VulkanImage* textureImage) {
            this->swapChainSize = swapChainSize;
            this->textureImage = textureImage;
-           this->textureImageMemory = textureImageMemory;
-           this->textureImageView = textureImageView;
            this->descriptorSetLayout = descriptorSetLayout;
            initMesh();
            initVertexBuffer(); 
@@ -37,27 +26,17 @@ class ScreenQuadVulkanModel {
         }
 
         void destroy() {
-            vkDestroySampler(context->device, textureSampler, nullptr);
-
-            vkDestroyBuffer(context->device, vertexBuffer, nullptr);
-            vkFreeMemory(context->device, vertexBufferMemory, nullptr);
-        
-            vkDestroyBuffer(context->device, indexBuffer, nullptr);
-            vkFreeMemory(context->device, indexBufferMemory, nullptr);
-
-            vkDestroyDescriptorPool(context->device, descriptorPool, nullptr);
+            vertexBuffer.destroy();
+            indexBuffer.destroy();
+            vkDestroySampler(VulkanGlobal::context.device, textureSampler, nullptr);
+            vkDestroyDescriptorPool(VulkanGlobal::context.device, descriptorPool, nullptr);
         }
 
-    private: 
-        VulkanApplicationContext *context;
-        VkDescriptorSetLayout *descriptorSetLayout;
-        
-        VkImage *textureImage;
-        VkDeviceMemory *textureImageMemory;
-        VkImageView *textureImageView;
+    private:
+        VulkanImage::VulkanImage* textureImage;
         uint32_t mipLevels = 1;
-
         int swapChainSize;
+        
         void initMesh() {
             float quadVertices[] = {
             // positions        // texture Coords
@@ -79,15 +58,7 @@ class ScreenQuadVulkanModel {
         }
 
         void initTextureSampler() {
-            VulkanImage::createTextureSampler( *context, textureSampler, mipLevels);
-        }
-
-        void initVertexBuffer() {
-            VulkanBuffer::createVertexBuffer( *context, mesh.vertices, vertexBuffer, vertexBufferMemory);
-        }
-
-        void initIndexBuffer() {
-            VulkanBuffer::createIndexBuffer( *context, mesh.indices, indexBuffer, indexBufferMemory);
+            VulkanImage::createTextureSampler(textureSampler, mipLevels);
         }
 
         void initDescriptorPool() {
@@ -101,7 +72,7 @@ class ScreenQuadVulkanModel {
             poolInfo.pPoolSizes = poolSizes.data();
             poolInfo.maxSets = static_cast<uint32_t>(swapChainSize);
 
-            if (vkCreateDescriptorPool(context->device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+            if (vkCreateDescriptorPool(VulkanGlobal::context.device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create descriptor pool!");
             }
         }
@@ -115,14 +86,14 @@ class ScreenQuadVulkanModel {
             allocInfo.pSetLayouts = layouts.data();
 
             descriptorSets.resize(swapChainSize);
-            if (vkAllocateDescriptorSets(context->device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
+            if (vkAllocateDescriptorSets(VulkanGlobal::context.device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
                 throw std::runtime_error("failed to allocate descriptor sets!");
             }
 
             for (size_t i = 0; i < swapChainSize; i++) {
                 VkDescriptorImageInfo imageInfo{};
                 imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                imageInfo.imageView = *textureImageView;
+                imageInfo.imageView = textureImage->imageView;
                 imageInfo.sampler = textureSampler;
 
                 std::array<VkWriteDescriptorSet, 1> descriptorWrites{};
@@ -135,9 +106,7 @@ class ScreenQuadVulkanModel {
                 descriptorWrites[0].descriptorCount = 1;
                 descriptorWrites[0].pImageInfo = &imageInfo;
 
-                vkUpdateDescriptorSets(context->device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+                vkUpdateDescriptorSets(VulkanGlobal::context.device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
             }
         }
 };
-
-#endif
