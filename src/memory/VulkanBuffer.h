@@ -18,8 +18,6 @@ namespace  VulkanMemory {
         void allocate(VkDeviceSize size, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
         void destroy();
     };
-
-    
 }
 
 #include "VulkanBuffer.tpp"
