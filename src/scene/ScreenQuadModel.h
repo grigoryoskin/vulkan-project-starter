@@ -12,9 +12,8 @@ class ScreenQuadVulkanModel: public DrawableModel {
         VkSampler textureSampler;
 
         void init(VkDescriptorSetLayout *descriptorSetLayout,
-                  int swapChainSize,
                   VulkanImage::VulkanImage* textureImage) {
-           this->swapChainSize = swapChainSize;
+           this->descriptorSetsSize = 1;
            this->textureImage = textureImage;
            this->descriptorSetLayout = descriptorSetLayout;
            initMesh();
@@ -35,7 +34,7 @@ class ScreenQuadVulkanModel: public DrawableModel {
     private:
         VulkanImage::VulkanImage* textureImage;
         uint32_t mipLevels = 1;
-        int swapChainSize;
+        int descriptorSetsSize = 1;
         
         void initMesh() {
             float quadVertices[] = {
@@ -64,13 +63,13 @@ class ScreenQuadVulkanModel: public DrawableModel {
         void initDescriptorPool() {
             std::array<VkDescriptorPoolSize, 1> poolSizes{};
             poolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            poolSizes[0].descriptorCount = static_cast<uint32_t>(swapChainSize);
+            poolSizes[0].descriptorCount = static_cast<uint32_t>(descriptorSetsSize);
 
             VkDescriptorPoolCreateInfo poolInfo{};
             poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
             poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
             poolInfo.pPoolSizes = poolSizes.data();
-            poolInfo.maxSets = static_cast<uint32_t>(swapChainSize);
+            poolInfo.maxSets = static_cast<uint32_t>(descriptorSetsSize);
 
             if (vkCreateDescriptorPool(VulkanGlobal::context.device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create descriptor pool!");
@@ -78,19 +77,19 @@ class ScreenQuadVulkanModel: public DrawableModel {
         }
 
         void initDescriptorSets() {
-            std::vector<VkDescriptorSetLayout> layouts(swapChainSize, *descriptorSetLayout);
+            std::vector<VkDescriptorSetLayout> layouts(descriptorSetsSize, *descriptorSetLayout);
             VkDescriptorSetAllocateInfo allocInfo{};
             allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
             allocInfo.descriptorPool = descriptorPool;
-            allocInfo.descriptorSetCount = static_cast<uint32_t>(swapChainSize);
+            allocInfo.descriptorSetCount = static_cast<uint32_t>(descriptorSetsSize);
             allocInfo.pSetLayouts = layouts.data();
 
-            descriptorSets.resize(swapChainSize);
+            descriptorSets.resize(descriptorSetsSize);
             if (vkAllocateDescriptorSets(VulkanGlobal::context.device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
                 throw std::runtime_error("failed to allocate descriptor sets!");
             }
 
-            for (size_t i = 0; i < swapChainSize; i++) {
+            for (size_t i = 0; i < descriptorSetsSize; i++) {
                 VkDescriptorImageInfo imageInfo{};
                 imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                 imageInfo.imageView = textureImage->imageView;

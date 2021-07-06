@@ -12,6 +12,7 @@ VulkanApplicationContext::VulkanApplicationContext() {
     createLogicalDevice();
     createAllocator();
     createCommandPool();
+    initSwapchainImageCount();
 }
 
 VulkanApplicationContext::~VulkanApplicationContext() {
@@ -319,5 +320,14 @@ void VulkanApplicationContext::createCommandPool() {
     poolInfo.flags = 0; // Optional
     if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
         throw std::runtime_error("failed to create command pool!");
+    }
+}
+
+void VulkanApplicationContext::initSwapchainImageCount() {
+    SwapChainSupportDetails swapChainSupport = VulkanGlobal::context.querySwapChainSupport();
+    swapChainImageCount = swapChainSupport.capabilities.minImageCount + 1;
+    if (swapChainSupport.capabilities.maxImageCount > 0 &&
+        swapChainImageCount > swapChainSupport.capabilities.maxImageCount) {
+            swapChainImageCount = swapChainSupport.capabilities.maxImageCount;
     }
 }

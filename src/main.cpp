@@ -31,6 +31,8 @@ float deltaTime = 0.0f; // Time between current frame and last frame
 float lastFrame = 0.0f; // Time of last frame
 Camera camera(glm::vec3(3.0f, 1.0f, 0.0f));
 
+const int MAX_FRAMES_IN_FLIGHT = 2;
+
 class HelloDogApplication {
 public:
     void run() {
@@ -94,8 +96,11 @@ private:
     ScreenQuadVulkanModel screenQuadModel;
 
     std::vector<VkCommandBuffer> commandBuffers;
-    VkSemaphore imageAvailableSemaphore;
-    VkSemaphore renderFinishedSemaphore;
+    std::vector<VkSemaphore> imageAvailableSemaphores;
+    std::vector<VkSemaphore> renderFinishedSemaphores;
+    // Fences to keep track of the images currently in the graphics queue.
+    std::vector<VkFence> inFlightFences;
+    std::vector<VkFence> imagesInFlight;
 
     // Initializing layouts and models.
     void initScene() {
@@ -113,12 +118,10 @@ private:
         }
         
         dogeModel.init(&singleTextureDescriptorLayout,
-                       swapchainContext.swapChainImages.size(),
                        path_prefix + "/models/buffDoge.obj",
                        path_prefix + "/textures/Doge",
                        &sharedUniformBuffers);
         cheemsModel.init(&singleTextureDescriptorLayout,
-                         swapchainContext.swapChainImages.size(),
                          path_prefix + "/models/cheems.obj",
                          path_prefix + "/textures/Cheems",
                          &sharedUniformBuffers);
@@ -134,7 +137,6 @@ private:
                                                texturedModelPipeline);
 
         lightCubeModel.init(&lightCubeDescriptorLayout,
-                            swapchainContext.swapChainImages.size(),
                             path_prefix + "/models/cube.obj",
                             &sharedUniformBuffers);
 
@@ -148,7 +150,6 @@ private:
 
         // Creating screen quad and passing color attachment of offscreen render pass as a texture.
         screenQuadModel.init(&screenQuadDescriptorLayout,
-                             swapchainContext.swapChainImages.size(),
                              &offscreenRenderContext.colorImage);          
 
         VulkanPipeline::createGraphicsPipeline(swapchainContext.swapChainExtent,
@@ -243,7 +244,7 @@ private:
             postProcessRenderPassInfo.pClearValues = clearValues.data();
             vkCmdBeginRenderPass(commandBuffers[i], &postProcessRenderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
             vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, screenQuadPipeline);
-            screenQuadModel.drawCommand(commandBuffers[i], screenQuadPipelineLayout, i);
+            screenQuadModel.drawCommand(commandBuffers[i], screenQuadPipelineLayout, 0);
             
             vkCmdEndRenderPass(commandBuffers[i]);
             if (vkEndCommandBuffer(commandBuffers[i]) != VK_SUCCESS) {
@@ -252,19 +253,35 @@ private:
         }
     }
 
-    void createSemaphores() {
-            VkSemaphoreCreateInfo semaphoreInfo{};
-            semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-            if (vkCreateSemaphore(VulkanGlobal::context.device, &semaphoreInfo, nullptr, &imageAvailableSemaphore) != VK_SUCCESS ||
-                vkCreateSemaphore(VulkanGlobal::context.device, &semaphoreInfo, nullptr, &renderFinishedSemaphore) != VK_SUCCESS) {
+    void createSyncObjects() {
+        imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+        renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+        inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+        imagesInFlight.resize(swapchainContext.swapChainImageViews.size());
 
-                throw std::runtime_error("failed to create semaphores!");
+        VkSemaphoreCreateInfo semaphoreInfo{};
+        semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+        VkFenceCreateInfo fenceInfo{};
+        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            if (vkCreateSemaphore(VulkanGlobal::context.device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
+                vkCreateSemaphore(VulkanGlobal::context.device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
+                vkCreateFence(VulkanGlobal::context.device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS) {
+
+                throw std::runtime_error("failed to create synchronization objects for a frame!");
             }
+        }
     }
 
+    size_t currentFrame = 0;
     void drawFrame() {
+        vkWaitForFences(VulkanGlobal::context.device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
+        
         uint32_t imageIndex;
-        VkResult result = vkAcquireNextImageKHR(VulkanGlobal::context.device, swapchainContext.swapChain, UINT64_MAX, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+        VkResult result = vkAcquireNextImageKHR(VulkanGlobal::context.device, swapchainContext.swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
 
         if (result == VK_ERROR_OUT_OF_DATE_KHR) {
             return;
@@ -272,12 +289,19 @@ private:
             throw std::runtime_error("failed to acquire swap chain image!");
         }
 
+        // Check if a previous frame is using this image (i.e. there is its fence to wait on)
+        if (imagesInFlight[imageIndex] != VK_NULL_HANDLE) {
+            vkWaitForFences(VulkanGlobal::context.device, 1, &imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX);
+        }
+        // Mark the image as now being in use by this frame
+        imagesInFlight[imageIndex] = inFlightFences[currentFrame];
+
         updateScene(imageIndex);
     
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-        VkSemaphore waitSemaphores[] = {imageAvailableSemaphore};
+        VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
         VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
         submitInfo.waitSemaphoreCount = 1;
         submitInfo.pWaitSemaphores = waitSemaphores;
@@ -285,10 +309,14 @@ private:
 
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
-        VkSemaphore signalSemaphores[] = {renderFinishedSemaphore};
+        VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[currentFrame]};
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
-        if (vkQueueSubmit(VulkanGlobal::context.graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
+
+        vkResetFences(VulkanGlobal::context.device, 1, &inFlightFences[currentFrame]);
+
+
+        if (vkQueueSubmit(VulkanGlobal::context.graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS) {
             throw std::runtime_error("failed to submit draw command buffer!");
         }
         VkPresentInfoKHR presentInfo{};
@@ -307,13 +335,24 @@ private:
         if (result != VK_SUCCESS) {
             throw std::runtime_error("failed to present swap chain image!");
         }
-        vkQueueWaitIdle(VulkanGlobal::context.presentQueue);
+        // Commented this out for playing around with it later :)
+        //vkQueueWaitIdle(VulkanGlobal::context.presentQueue);
+        currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
+    int nbFrames = 0;
+    float lastTime = 0;
     void mainLoop() {
         while (!glfwWindowShouldClose(VulkanGlobal::context.window)) {
             float currentTime = (float)glfwGetTime();
             deltaTime = currentTime - lastFrame;
+            nbFrames++;
+            if ( currentTime - lastTime >= 1.0 ){ // If last prinf() was more than 1 sec ago
+                // printf and reset timer
+                printf("%f ms/frame\n", 1000.0/double(nbFrames));
+                nbFrames = 0;
+                lastTime = currentTime;
+            }
             lastFrame = currentTime;
 
             processInput(VulkanGlobal::context.window);
@@ -332,7 +371,7 @@ private:
         initScene();
         
         createCommandBuffers();
-        createSemaphores();
+        createSyncObjects();
         glfwSetCursorPosCallback(VulkanGlobal::context.window, mouse_callback);
     }
 
@@ -366,8 +405,12 @@ private:
         vkDestroyDescriptorSetLayout(VulkanGlobal::context.device, screenQuadDescriptorLayout, nullptr);
         screenQuadModel.destroy();
 
-        vkDestroySemaphore(VulkanGlobal::context.device, renderFinishedSemaphore, nullptr);
-        vkDestroySemaphore(VulkanGlobal::context.device, imageAvailableSemaphore, nullptr);
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            vkDestroySemaphore(VulkanGlobal::context.device, renderFinishedSemaphores[i], nullptr);
+            vkDestroySemaphore(VulkanGlobal::context.device, imageAvailableSemaphores[i], nullptr);
+            vkDestroyFence(VulkanGlobal::context.device, inFlightFences[i], nullptr);
+
+        }
 
         //delete VulkanGlobal::context;
         glfwTerminate();

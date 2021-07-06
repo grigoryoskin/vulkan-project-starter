@@ -16,11 +16,10 @@ class TexturedVulkanModel: public DrawableModel{
         VkSampler textureSampler;
 
         void init(VkDescriptorSetLayout *descriptorSetLayout,
-                  int swapChainSize,
                   std::string modelPath,
                   std::string texturePath,
                   std::vector<VulkanMemory::VulkanBuffer<SharedUniformBufferObject> >* sharedUniformBuffers) {
-            this->swapChainSize = swapChainSize;
+            this->descriptorSetsSize = VulkanGlobal::context.swapChainImageCount;
             this->sharedUniformBuffers = sharedUniformBuffers;
             this->descriptorSetLayout = descriptorSetLayout;
             initTextureImage(texturePath);
@@ -39,7 +38,7 @@ class TexturedVulkanModel: public DrawableModel{
 
             vertexBuffer.destroy();
             indexBuffer.destroy();
-            for (size_t i = 0; i < swapChainSize; i++) {
+            for (size_t i = 0; i < descriptorSetsSize; i++) {
                 uniformBuffers[i].destroy();
             }
 
@@ -57,7 +56,7 @@ class TexturedVulkanModel: public DrawableModel{
 
     private:
         std::vector<VulkanMemory::VulkanBuffer<SharedUniformBufferObject> >* sharedUniformBuffers;
-        int swapChainSize;
+        int descriptorSetsSize;
         
         void initTextureImage(std::string texturePath) {
             VulkanImage::createTextureImage(texturePath, textureImage, mipLevels);
@@ -70,17 +69,17 @@ class TexturedVulkanModel: public DrawableModel{
         void initDescriptorPool() {
             std::array<VkDescriptorPoolSize, 3> poolSizes{};
             poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            poolSizes[0].descriptorCount = static_cast<uint32_t>(swapChainSize);
+            poolSizes[0].descriptorCount = static_cast<uint32_t>(descriptorSetsSize);
             poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            poolSizes[1].descriptorCount = static_cast<uint32_t>(swapChainSize);
+            poolSizes[1].descriptorCount = static_cast<uint32_t>(descriptorSetsSize);
             poolSizes[2].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            poolSizes[2].descriptorCount = static_cast<uint32_t>(swapChainSize);
+            poolSizes[2].descriptorCount = static_cast<uint32_t>(descriptorSetsSize);
 
             VkDescriptorPoolCreateInfo poolInfo{};
             poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
             poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
             poolInfo.pPoolSizes = poolSizes.data();
-            poolInfo.maxSets = static_cast<uint32_t>(swapChainSize);
+            poolInfo.maxSets = static_cast<uint32_t>(descriptorSetsSize);
 
             if (vkCreateDescriptorPool(VulkanGlobal::context.device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create descriptor pool!");
@@ -88,19 +87,19 @@ class TexturedVulkanModel: public DrawableModel{
         }
 
         void initDescriptorSets() {
-            std::vector<VkDescriptorSetLayout> layouts(swapChainSize, *descriptorSetLayout);
+            std::vector<VkDescriptorSetLayout> layouts(descriptorSetsSize, *descriptorSetLayout);
             VkDescriptorSetAllocateInfo allocInfo{};
             allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
             allocInfo.descriptorPool = descriptorPool;
-            allocInfo.descriptorSetCount = static_cast<uint32_t>(swapChainSize);
+            allocInfo.descriptorSetCount = static_cast<uint32_t>(descriptorSetsSize);
             allocInfo.pSetLayouts = layouts.data();
 
-            descriptorSets.resize(swapChainSize);
+            descriptorSets.resize(descriptorSetsSize);
             if (vkAllocateDescriptorSets(VulkanGlobal::context.device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
                 throw std::runtime_error("failed to allocate descriptor sets!");
             }
 
-            for (size_t i = 0; i < swapChainSize; i++) {
+            for (size_t i = 0; i < descriptorSetsSize; i++) {
                 VkDescriptorBufferInfo bufferInfo{};
                 bufferInfo.buffer = uniformBuffers[i].buffer;
                 bufferInfo.offset = 0;
@@ -148,9 +147,9 @@ class TexturedVulkanModel: public DrawableModel{
 
         void initUniformBuffers() {
             VkDeviceSize bufferSize = sizeof(UniformBufferObject);
-            uniformBuffers.resize(swapChainSize);
+            uniformBuffers.resize(descriptorSetsSize);
 
-            for (size_t i = 0; i < swapChainSize; i++) {
+            for (size_t i = 0; i < descriptorSetsSize; i++) {
                 uniformBuffers[i].allocate(bufferSize,
                                            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, 
                                            VMA_MEMORY_USAGE_CPU_TO_GPU);
