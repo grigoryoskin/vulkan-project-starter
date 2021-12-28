@@ -2,35 +2,33 @@
 
 #include <vector>
 #include "../utils/vulkan.h"
-#include "mesh.h"
-#include "../memory/VulkanBuffer.h"
+#include "Mesh.h"
+#include "../memory/Buffer.h"
+#include "Material.h"
 
-class DrawableModel {
+namespace mcvkp
+{
+
+    class DrawableModel
+    {
     public:
-        Mesh mesh;
-        VulkanMemory::VulkanBuffer<Vertex> vertexBuffer;
-        VulkanMemory::VulkanBuffer<uint32_t> indexBuffer;
+        DrawableModel(std::shared_ptr<Material> material,
+                      std::string modelPath);
 
-        VkDescriptorPool descriptorPool;
-        std::vector<VkDescriptorSet> descriptorSets;
+        DrawableModel(std::shared_ptr<Material> material,
+                      MeshType type);
 
-        void drawCommand(VkCommandBuffer &commandBuffer, VkPipelineLayout &pipelineLayout, size_t currentFrame) {
-            VkBuffer vertexBuffers[] = {vertexBuffer.buffer};
-            VkDeviceSize offsets[] = {0};
-            vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-            vkCmdBindIndexBuffer(commandBuffer, indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+        std::shared_ptr<Material> getMaterial();
+        void drawCommand(VkCommandBuffer &commandBuffer, size_t currentFrame);
 
-            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
-            vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(mesh.indices.size()), 1, 0, 0, 0);
-        }
-    protected:
-        VkDescriptorSetLayout* descriptorSetLayout;
+    private:
+        std::shared_ptr<Material> m_material;
+        mcvkp::Buffer m_vertexBuffer;
+        mcvkp::Buffer m_indexBuffer;
+        uint32_t m_numIndices;
 
-        void initVertexBuffer() {
-            vertexBuffer.create(mesh.vertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-        }
+        void initVertexBuffer(const Mesh &mesh);
 
-        void initIndexBuffer() {
-            indexBuffer.create(mesh.indices, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-        }
-};
+        void initIndexBuffer(const Mesh &mesh);
+    };
+}

@@ -1,14 +1,15 @@
-#include "VulkanSwapchain.h"
+#include "./VulkanSwapchain.h"
 
 #include <vector>
 #include <iostream>
 
-void VulkanSwapchain::init() {
+VulkanSwapchain::VulkanSwapchain() {
     createSwapChain();
     createImageViews();
 }
 
-void VulkanSwapchain::destroy() {
+VulkanSwapchain::~VulkanSwapchain() {
+    std::cout << "Destroying swapchain" << "\n";
     for (size_t i = 0; i < swapChainImageViews.size(); i++) {
         vkDestroyImageView(VulkanGlobal::context.device, swapChainImageViews[i], nullptr);
     }
@@ -68,7 +69,7 @@ void VulkanSwapchain::createSwapChain() {
     // Precalculated this to make it globally available.
     uint32_t imageCount = VulkanGlobal::context.swapChainImageCount;
 
-    std::cout << "Swap chain image count: " << imageCount << std::endl;
+    std::cout << "Swap chain image count: " << imageCount << "\n";
 
     VkSwapchainCreateInfoKHR createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -112,11 +113,12 @@ void VulkanSwapchain::createSwapChain() {
 
 void VulkanSwapchain::createImageViews() {
     swapChainImageViews.resize(swapChainImages.size());
+    uint32_t mipLevels = 1;
     for (size_t i = 0; i < swapChainImages.size(); i++) {
         swapChainImageViews[i] = 
-            VulkanImage::createImageView(swapChainImages[i],
+            mcvkp::ImageUtils::createImageView(swapChainImages[i],
                                             swapChainImageFormat,
                                             VK_IMAGE_ASPECT_COLOR_BIT,
-                                            1);
+                                            mipLevels);
     }
 }

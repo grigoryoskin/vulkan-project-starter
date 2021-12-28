@@ -16,6 +16,7 @@ VulkanApplicationContext::VulkanApplicationContext() {
 }
 
 VulkanApplicationContext::~VulkanApplicationContext() {
+    std::cout << "Destroying context" << "\n";
     vkDestroyCommandPool(device, commandPool, nullptr);
     vmaDestroyAllocator(allocator);
     vkDestroySurfaceKHR(instance, surface, nullptr);
@@ -93,7 +94,7 @@ SwapChainSupportDetails VulkanApplicationContext::querySwapChainSupport(VkPhysic
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
     uint32_t formatCount;
     vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, nullptr);
-    std::cout << "Swap chain supported formats: " << formatCount << std::endl;
+    std::cout << "Swap chain supported formats: " << formatCount << "\n";
 
     if (formatCount != 0) {
         details.formats.resize(formatCount);
@@ -103,7 +104,7 @@ SwapChainSupportDetails VulkanApplicationContext::querySwapChainSupport(VkPhysic
 
     uint32_t presentModeCount;
     vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, nullptr);
-    std::cout << "Swap chain supported present modes: " << presentModeCount << std::endl;
+    std::cout << "Swap chain supported present modes: " << presentModeCount << "\n";
 
     if (presentModeCount != 0) {
         details.presentModes.resize(presentModeCount);
@@ -125,7 +126,7 @@ bool VulkanApplicationContext::checkValidationLayerSupport() {
         for (const auto& layerProperties : availableLayers) {
             if (strcmp(layerName, layerProperties.layerName) == 0) {
                 layerFound = true;
-                std::cout << "Validation layer found: " << layerName << std::endl;
+                std::cout << "Validation layer found: " << layerName << "\n";
                 break;
             }
         }
@@ -250,7 +251,7 @@ void VulkanApplicationContext::pickPhysicalDevice() {
         }
     }
 
-    std::cout << "mssa samples: " << msaaSamples << std::endl;
+    std::cout << "mssa samples: " << msaaSamples << "\n";
 
     if (physicalDevice == VK_NULL_HANDLE) {
         throw std::runtime_error("failed to find a suitable GPU!");

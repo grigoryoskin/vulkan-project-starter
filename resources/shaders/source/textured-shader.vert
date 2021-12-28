@@ -5,7 +5,7 @@ layout(binding = 0) uniform UniformBufferObject {
     mat4 model;
 } ubo;
 
-layout(binding = 2) uniform SharedUniformBufferObject {
+layout(binding = 1) uniform SharedUniformBufferObject {
     mat4 view;
     mat4 proj;
     vec4 lightPos;
@@ -21,7 +21,7 @@ layout(location = 2) out vec3 outWorldPos;
 layout(location = 3) out vec3 outLightPos;
 
 void main() {
-    vec4 worldPos = ubo.model * vec4(inPosition, 1.0);
+    vec4 worldPos = vec4(mat3(ubo.model) * inPosition, 1.0);
     gl_Position = sharedUbo.proj * sharedUbo.view * worldPos;
     outNormal = mat3(transpose(inverse(ubo.model))) * inNormal;
     outLightPos = sharedUbo.lightPos.xyz;

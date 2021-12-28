@@ -3,7 +3,7 @@
 #include "../utils/vulkan.h"
 #include <vector>
 #include "VulkanApplicationContext.h"
-#include "../memory/VulkanImage.h"
+#include "../memory/Image.h"
 
 class VulkanSwapchain {
     public:
@@ -13,9 +13,8 @@ class VulkanSwapchain {
         VkExtent2D swapChainExtent;
         std::vector<VkImageView> swapChainImageViews;
         
-        void init();
-
-        void destroy();
+        VulkanSwapchain();
+        ~VulkanSwapchain();
 
     private:
         VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
@@ -28,3 +27,7 @@ class VulkanSwapchain {
 
         void createImageViews();
 };
+
+namespace VulkanGlobal {
+    extern const VulkanSwapchain swapchainContext;
+}

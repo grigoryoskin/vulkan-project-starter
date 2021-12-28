@@ -52,8 +52,9 @@ class VulkanApplicationContext {
         VkCommandPool commandPool;
         VmaAllocator allocator;
         VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
-        uint32_t swapChainImageCount;
 
+        uint32_t swapChainImageCount;
+        
         VulkanApplicationContext() ;
 
         ~VulkanApplicationContext() ;
@@ -64,6 +65,7 @@ class VulkanApplicationContext {
                                      VkImageTiling tiling, 
                                      VkFormatFeatureFlags features) const;
     private:
+
         void initWindow() ;
 
         void createSurface() ;
@@ -91,6 +93,7 @@ class VulkanApplicationContext {
         void createCommandPool();
 
         void initSwapchainImageCount();
+
 };
 
 namespace VulkanGlobal {
