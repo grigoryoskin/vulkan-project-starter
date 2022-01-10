@@ -6,30 +6,44 @@
 #include "../memory/Image.h"
 #include "../app-context/VulkanSwapchain.h"
 
-
 namespace mcvkp
 {
+    template <typename T>
+    struct Descriptor
+    {
+        std::shared_ptr<T> data;
+        VkShaderStageFlags shaderStageFlags;
+    };
 
     class Material
     {
     public:
-        void* bufferBundle;
         Material(
             const std::string &vertexShaderPath,
             const std::string &fragmentShaderPath);
 
+        Material();
+
         ~Material();
 
-        void addTexture(const std::shared_ptr<Texture> &texture);
+        void addTexture(const std::shared_ptr<Texture> &texture, VkShaderStageFlags shaderStageFlags);
 
-        void addBufferBundle(const std::shared_ptr<BufferBundle> &bufferBundle);
+        void addStorageImage(const std::shared_ptr<Image> &image, VkShaderStageFlags shaderStageFlags);
+
+        void addBufferBundle(const std::shared_ptr<BufferBundle> &bufferBundle, VkShaderStageFlags shaderStageFlags);
+
+        const std::vector<Descriptor<BufferBundle> > &getBufferBundles() const;
+
+        const std::vector<Descriptor<Texture> > &getTextures() const;
+
+        const std::vector<Descriptor<Image> > &getStorageImages() const;
 
         // Initialize material when adding to a scene.
         void init(const VkRenderPass &renderPass);
 
         void bind(VkCommandBuffer &commandBuffer, size_t currentFrame);
 
-    private:
+    protected:
         void __initDescriptorSetLayout();
         void __initDescriptorPool();
         void __initDescriptorSets();
@@ -38,10 +52,12 @@ namespace mcvkp
             const VkRenderPass &renderPass,
             std::string vertexShaderPath,
             std::string fragmentShaderPath);
+        VkShaderModule __createShaderModule(const std::vector<char> &code);
 
-    private:
-        std::vector<std::shared_ptr<BufferBundle> > m_bufferBundles;
-        std::vector<std::shared_ptr<Texture> > m_textures;
+    protected:
+        std::vector<Descriptor<BufferBundle> > m_bufferBundleDescriptors;
+        std::vector<Descriptor<Texture> > m_textureDescriptors;
+        std::vector<Descriptor<Image> > m_storageImageDescriptors;
 
         std::string m_vertexShaderPath;
         std::string m_fragmentShaderPath;

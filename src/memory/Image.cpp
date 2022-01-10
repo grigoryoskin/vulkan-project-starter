@@ -27,6 +27,15 @@ namespace mcvkp
         }
     }
 
+    VkDescriptorImageInfo Image::getDescriptorInfo(VkImageLayout imageLayout)
+    {
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.imageLayout = imageLayout;
+        imageInfo.imageView = imageView;
+
+        return imageInfo;
+    }
+
     namespace ImageUtils
     {
 
@@ -66,6 +75,9 @@ namespace mcvkp
                          VmaMemoryUsage memoryUsage,
                          std::shared_ptr<Image> allocatedImage)
         {
+            allocatedImage->width = width;
+            allocatedImage->height = height;
+
             VkImageCreateInfo imageInfo{};
             imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
             imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -134,9 +146,22 @@ namespace mcvkp
             {
                 barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
                 barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
                 sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
                 destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            }
+            else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+            {
+                barrier.srcAccessMask = 0;
+                barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+                sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+                destinationStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+            }
+            else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_GENERAL)
+            {
+                barrier.srcAccessMask = 0;
+                barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+                sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+                destinationStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
             }
             else
             {
@@ -310,7 +335,7 @@ namespace mcvkp
                         VK_IMAGE_ASPECT_COLOR_BIT,
                         VMA_MEMORY_USAGE_GPU_ONLY,
                         allocatedImage);
-
+            std::cout << "creating texture" << std::endl;
             transitionImageLayout(allocatedImage->image,
                                   VK_FORMAT_R8G8B8A8_SRGB,
                                   VK_IMAGE_LAYOUT_UNDEFINED,
@@ -364,8 +389,9 @@ namespace mcvkp
         ImageUtils::createTextureSampler(m_sampler, m_mips);
     }
 
-    Texture::~Texture() {
-         vkDestroySampler(VulkanGlobal::context.device, *m_sampler, nullptr);
+    Texture::~Texture()
+    {
+        vkDestroySampler(VulkanGlobal::context.device, *m_sampler, nullptr);
     }
 
     VkDescriptorImageInfo Texture::getDescriptorInfo()

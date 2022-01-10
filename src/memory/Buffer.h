@@ -18,7 +18,8 @@ namespace mcvkp
 
         ~Buffer()
         {
-            std::cout << "Destroying buffer" << "\n";
+            std::cout << "Destroying buffer"
+                      << "\n";
             if (buffer != VK_NULL_HANDLE)
             {
                 vmaDestroyBuffer(VulkanGlobal::context.allocator, buffer, allocation);
@@ -81,11 +82,11 @@ namespace mcvkp
         {
             buffer->size = sizeof(T);
 
-            allocate(buffer, numElements*sizeof(T), usage, memoryUsage);
+            allocate(buffer, numElements * sizeof(T), usage, memoryUsage);
 
             void *data;
             vmaMapMemory(VulkanGlobal::context.allocator, buffer->allocation, &data);
-            memcpy(data, elements, numElements*sizeof(T));
+            memcpy(data, elements, numElements * sizeof(T));
             vmaUnmapMemory(VulkanGlobal::context.allocator, buffer->allocation);
         }
 

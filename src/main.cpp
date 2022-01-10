@@ -100,21 +100,21 @@ private:
         std::shared_ptr<Material> dogeMaterial = std::make_shared<Material>(
             path_prefix + "/shaders/generated/textured-vert.spv",
             path_prefix + "/shaders/generated/textured-frag.spv");
-        dogeMaterial->addBufferBundle(dogeBufferBundle);
-        dogeMaterial->addBufferBundle(sharedUniformBufferBundle);
-        dogeMaterial->addTexture(dogeTex);
+        dogeMaterial->addBufferBundle(dogeBufferBundle, VK_SHADER_STAGE_VERTEX_BIT);
+        dogeMaterial->addBufferBundle(sharedUniformBufferBundle, VK_SHADER_STAGE_VERTEX_BIT);
+        dogeMaterial->addTexture(dogeTex, VK_SHADER_STAGE_FRAGMENT_BIT);
 
         std::shared_ptr<Material> cheemzMaterial = std::make_shared<Material>(
             path_prefix + "/shaders/generated/textured-vert.spv",
             path_prefix + "/shaders/generated/textured-frag.spv");
-        cheemzMaterial->addBufferBundle(cheemzBufferBundle);
-        cheemzMaterial->addBufferBundle(sharedUniformBufferBundle);
-        cheemzMaterial->addTexture(cheemzTex);
+        cheemzMaterial->addBufferBundle(cheemzBufferBundle, VK_SHADER_STAGE_VERTEX_BIT);
+        cheemzMaterial->addBufferBundle(sharedUniformBufferBundle, VK_SHADER_STAGE_VERTEX_BIT);
+        cheemzMaterial->addTexture(cheemzTex, VK_SHADER_STAGE_FRAGMENT_BIT);
 
         std::shared_ptr<Material> lightCubeMaterial = std::make_shared<Material>(
             path_prefix + "/shaders/generated/untextured-vert.spv",
             path_prefix + "/shaders/generated/untextured-frag.spv");
-        lightCubeMaterial->addBufferBundle(sharedUniformBufferBundle);
+        lightCubeMaterial->addBufferBundle(sharedUniformBufferBundle, VK_SHADER_STAGE_VERTEX_BIT);
 
         /**
          * Adding models to scene.
@@ -132,7 +132,7 @@ private:
         std::shared_ptr<Material> screenMaterial = std::make_shared<Material>(
             path_prefix + "/shaders/generated/post-process-vert.spv",
             path_prefix + "/shaders/generated/post-process-frag.spv");
-        screenMaterial->addTexture(screenTex);
+        screenMaterial->addTexture(screenTex, VK_SHADER_STAGE_FRAGMENT_BIT);
         postProcessScene->addModel(std::make_shared<DrawableModel>(screenMaterial, MeshType::ePlane));
     }
 

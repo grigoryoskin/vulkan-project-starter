@@ -8,28 +8,69 @@ namespace mcvkp
 {
     Material::Material(
         const std::string &vertexShaderPath,
-        const std::string &fragmentShaderPath) : 
-                                                 m_fragmentShaderPath(fragmentShaderPath), m_vertexShaderPath(vertexShaderPath), m_initialized(false)
+        const std::string &fragmentShaderPath) : m_fragmentShaderPath(fragmentShaderPath), m_vertexShaderPath(vertexShaderPath), m_initialized(false)
     {
         m_descriptorSetsSize = VulkanGlobal::swapchainContext.swapChainImages.size();
     }
 
-    Material::~Material() {
-        std::cout << "Destroying material" << "\n";
+    Material::Material()
+    {
+        m_descriptorSetsSize = VulkanGlobal::swapchainContext.swapChainImages.size();
+    }
+
+    Material::~Material()
+    {
+        std::cout << "Destroying material"
+                  << "\n";
         vkDestroyDescriptorSetLayout(VulkanGlobal::context.device, m_descriptorSetLayout, nullptr);
         vkDestroyPipeline(VulkanGlobal::context.device, m_pipeline, nullptr);
         vkDestroyPipelineLayout(VulkanGlobal::context.device, m_pipelineLayout, nullptr);
         vkDestroyDescriptorPool(VulkanGlobal::context.device, m_descriptorPool, nullptr);
     }
 
-    void Material::addTexture(const std::shared_ptr<Texture> &texture)
+    VkShaderModule Material::__createShaderModule(const std::vector<char> &code)
     {
-        m_textures.push_back(std::move(texture));
+        VkShaderModuleCreateInfo createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        createInfo.codeSize = code.size();
+        createInfo.pCode = reinterpret_cast<const uint32_t *>(code.data());
+
+        VkShaderModule shaderModule;
+        if (vkCreateShaderModule(VulkanGlobal::context.device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to create shader module!");
+        }
+        return shaderModule;
     }
 
-    void Material::addBufferBundle(const std::shared_ptr<BufferBundle> &bufferBundle)
+    void Material::addTexture(const std::shared_ptr<Texture> &texture, VkShaderStageFlags shaderStageFlags)
     {
-        m_bufferBundles.push_back(std::move(bufferBundle));
+        m_textureDescriptors.push_back({texture, shaderStageFlags});
+    }
+
+    void Material::addBufferBundle(const std::shared_ptr<BufferBundle> &bufferBundle, VkShaderStageFlags shaderStageFlags)
+    {
+        m_bufferBundleDescriptors.push_back({bufferBundle, shaderStageFlags});
+    }
+
+    void Material::addStorageImage(const std::shared_ptr<Image> &image, VkShaderStageFlags shaderStageFlags)
+    {
+        m_storageImageDescriptors.push_back({image, shaderStageFlags});
+    }
+
+    const std::vector<Descriptor<BufferBundle> > &Material::getBufferBundles() const
+    {
+        return m_bufferBundleDescriptors;
+    }
+
+    const std::vector<Descriptor<Texture> > &Material::getTextures() const
+    {
+        return m_textureDescriptors;
+    }
+
+    const std::vector<Descriptor<Image> > &Material::getStorageImages() const
+    {
+        return m_storageImageDescriptors;
     }
 
     // Initialize material when adding to a scene.
@@ -46,21 +87,6 @@ namespace mcvkp
         m_initialized = true;
     }
 
-    VkShaderModule createShaderModule(const std::vector<char> &code)
-    {
-        VkShaderModuleCreateInfo createInfo{};
-        createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-        createInfo.codeSize = code.size();
-        createInfo.pCode = reinterpret_cast<const uint32_t *>(code.data());
-
-        VkShaderModule shaderModule;
-        if (vkCreateShaderModule(VulkanGlobal::context.device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS)
-        {
-            throw std::runtime_error("failed to create shader module!");
-        }
-        return shaderModule;
-    }
-
     void Material::__initPipeline(const VkExtent2D &swapChainExtent,
                                   const VkRenderPass &renderPass,
                                   std::string vertexShaderPath,
@@ -68,8 +94,8 @@ namespace mcvkp
     {
         auto vertShaderCode = readFile(vertexShaderPath);
         auto fragShaderCode = readFile(fragmentShaderPath);
-        VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
-        VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+        VkShaderModule vertShaderModule = __createShaderModule(vertShaderCode);
+        VkShaderModule fragShaderModule = __createShaderModule(fragShaderCode);
 
         VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
         vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -224,28 +250,42 @@ namespace mcvkp
     {
         std::vector<VkDescriptorSetLayoutBinding> bindings;
 
-        for (size_t buffer_i = 0; buffer_i < m_bufferBundles.size(); buffer_i++)
+        for (size_t buffer_i = 0; buffer_i < m_bufferBundleDescriptors.size(); buffer_i++)
         {
             VkDescriptorSetLayoutBinding uboLayoutBinding{};
             uboLayoutBinding.binding = buffer_i;
             uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             uboLayoutBinding.descriptorCount = 1;
-            uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+            uboLayoutBinding.stageFlags = m_bufferBundleDescriptors[buffer_i].shaderStageFlags;
             uboLayoutBinding.pImmutableSamplers = nullptr; // Optional
             bindings.push_back(uboLayoutBinding);
         }
 
-        for (size_t tex_i = 0; tex_i < m_textures.size(); tex_i++)
+        for (size_t tex_i = 0; tex_i < m_textureDescriptors.size(); tex_i++)
         {
-            VkDescriptorImageInfo imageInfo = m_textures[tex_i]->getDescriptorInfo();
+            VkDescriptorImageInfo imageInfo = m_textureDescriptors[tex_i].data->getDescriptorInfo();
 
-            size_t tex_ix = m_bufferBundles.size() + tex_i;
+            size_t binding = m_bufferBundleDescriptors.size() + tex_i;
             VkDescriptorSetLayoutBinding samplerLayoutBinding{};
-            samplerLayoutBinding.binding = tex_ix;
+            samplerLayoutBinding.binding = binding;
             samplerLayoutBinding.descriptorCount = 1;
             samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             samplerLayoutBinding.pImmutableSamplers = nullptr;
-            samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            samplerLayoutBinding.stageFlags = m_textureDescriptors[tex_i].shaderStageFlags;
+            bindings.push_back(samplerLayoutBinding);
+        }
+
+        for (size_t tex_i = 0; tex_i < m_storageImageDescriptors.size(); tex_i++)
+        {
+            VkDescriptorImageInfo imageInfo = m_storageImageDescriptors[tex_i].data->getDescriptorInfo(VK_IMAGE_LAYOUT_GENERAL);
+
+            size_t binding = m_bufferBundleDescriptors.size() + m_textureDescriptors.size() + tex_i;
+            VkDescriptorSetLayoutBinding samplerLayoutBinding{};
+            samplerLayoutBinding.binding = binding;
+            samplerLayoutBinding.descriptorCount = 1;
+            samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+            samplerLayoutBinding.pImmutableSamplers = nullptr;
+            samplerLayoutBinding.stageFlags = m_storageImageDescriptors[tex_i].shaderStageFlags;
             bindings.push_back(samplerLayoutBinding);
         }
 
@@ -264,7 +304,7 @@ namespace mcvkp
     {
         std::vector<VkDescriptorPoolSize> poolSizes{};
 
-        for (size_t buffer_i = 0; buffer_i < m_bufferBundles.size(); buffer_i++)
+        for (size_t buffer_i = 0; buffer_i < m_bufferBundleDescriptors.size(); buffer_i++)
         {
             VkDescriptorPoolSize size;
             size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -272,10 +312,18 @@ namespace mcvkp
             poolSizes.push_back(size);
         }
 
-        for (size_t tex_i = 0; tex_i < m_textures.size(); tex_i++)
+        for (size_t tex_i = 0; tex_i < m_textureDescriptors.size(); tex_i++)
         {
             VkDescriptorPoolSize size;
             size.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            size.descriptorCount = static_cast<uint32_t>(m_descriptorSetsSize);
+            poolSizes.push_back(size);
+        }
+
+        for (size_t tex_i = 0; tex_i < m_storageImageDescriptors.size(); tex_i++)
+        {
+            VkDescriptorPoolSize size;
+            size.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
             size.descriptorCount = static_cast<uint32_t>(m_descriptorSetsSize);
             poolSizes.push_back(size);
         }
@@ -307,7 +355,7 @@ namespace mcvkp
             throw std::runtime_error("failed to allocate descriptor sets!");
         }
 
-        size_t numDescriptors = m_bufferBundles.size() + m_textures.size();
+        size_t numDescriptors = m_bufferBundleDescriptors.size() + m_textureDescriptors.size() + m_storageImageDescriptors.size();
 
         for (size_t i = 0; i < m_descriptorSetsSize; i++)
         {
@@ -318,14 +366,13 @@ namespace mcvkp
             std::vector<VkWriteDescriptorSet> descriptorWrites;
             descriptorWrites.reserve(numDescriptors);
             std::vector<VkDescriptorBufferInfo> bufferDescInfos;
-            for (size_t buffer_i = 0; buffer_i < m_bufferBundles.size(); buffer_i++)
+            for (size_t buffer_i = 0; buffer_i < m_bufferBundleDescriptors.size(); buffer_i++)
             {
-                bufferDescInfos.push_back(m_bufferBundles[buffer_i]->buffers[i]->getDescriptorInfo());
+                bufferDescInfos.push_back(m_bufferBundleDescriptors[buffer_i].data->buffers[i]->getDescriptorInfo());
             }
 
-            for (size_t buffer_i = 0; buffer_i < m_bufferBundles.size(); buffer_i++)
+            for (size_t buffer_i = 0; buffer_i < m_bufferBundleDescriptors.size(); buffer_i++)
             {
-                // VkDescriptorBufferInfo bufferInfo = m_buffers[buffer_i][i]->getDescriptorInfo();
                 VkWriteDescriptorSet descriptorSet{};
                 descriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                 descriptorSet.dstSet = m_descriptorSets[i];
@@ -333,28 +380,48 @@ namespace mcvkp
                 descriptorSet.dstArrayElement = 0;
                 descriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
                 descriptorSet.descriptorCount = 1;
-                //VkDescriptorBufferInfo descInfo = m_bufferBundles[buffer_i]->buffers[i]->getDescriptorInfo();
                 descriptorSet.pBufferInfo = &bufferDescInfos[buffer_i];
 
                 descriptorWrites.push_back(descriptorSet);
             }
             std::vector<VkDescriptorImageInfo> imageInfos;
-            for (size_t tex_i = 0; tex_i < m_textures.size(); tex_i++)
+            for (size_t tex_i = 0; tex_i < m_textureDescriptors.size(); tex_i++)
             {
-                imageInfos.push_back(m_textures[tex_i]->getDescriptorInfo());
+                imageInfos.push_back(m_textureDescriptors[tex_i].data->getDescriptorInfo());
             }
 
-            for (size_t tex_i = 0; tex_i < m_textures.size(); tex_i++)
+            for (size_t tex_i = 0; tex_i < m_textureDescriptors.size(); tex_i++)
             {
-                size_t tex_ix = m_bufferBundles.size() + tex_i;
+                size_t binding = m_bufferBundleDescriptors.size() + tex_i;
                 VkWriteDescriptorSet descriptorSet{};
                 descriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                 descriptorSet.dstSet = m_descriptorSets[i];
-                descriptorSet.dstBinding = tex_ix;
+                descriptorSet.dstBinding = binding;
                 descriptorSet.dstArrayElement = 0;
                 descriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
                 descriptorSet.descriptorCount = 1;
                 descriptorSet.pImageInfo = &imageInfos[tex_i];
+
+                descriptorWrites.push_back(descriptorSet);
+            }
+
+            std::vector<VkDescriptorImageInfo> storageImageInfos;
+            for (size_t tex_i = 0; tex_i < m_storageImageDescriptors.size(); tex_i++)
+            {
+                storageImageInfos.push_back(m_storageImageDescriptors[tex_i].data->getDescriptorInfo(VK_IMAGE_LAYOUT_GENERAL));
+            }
+
+            for (size_t tex_i = 0; tex_i < m_storageImageDescriptors.size(); tex_i++)
+            {
+                size_t binding = m_bufferBundleDescriptors.size() + m_textureDescriptors.size() + tex_i;
+                VkWriteDescriptorSet descriptorSet{};
+                descriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                descriptorSet.dstSet = m_descriptorSets[i];
+                descriptorSet.dstBinding = binding;
+                descriptorSet.dstArrayElement = 0;
+                descriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+                descriptorSet.descriptorCount = 1;
+                descriptorSet.pImageInfo = &storageImageInfos[tex_i];
 
                 descriptorWrites.push_back(descriptorSet);
             }
@@ -365,17 +432,8 @@ namespace mcvkp
 
     void Material::bind(VkCommandBuffer &commandBuffer, size_t currentFrame)
     {
-        std::cout << "binding " << std::to_string(currentFrame) << "\n";
-        if(m_textures.size() > 0){
-            std::cout << m_textures[0].get() << "\n";
-        }
-        if(m_pipeline == VK_NULL_HANDLE){
-            std::cout << "null pipeline" << "\n";
-            std::cout << m_bufferBundles.size() << "\n";
-        }
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, 1, &m_descriptorSets[currentFrame], 0, nullptr);
 
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
-        std::cout << "binding descriptor sets" << "\n";
     }
 }
