@@ -3,12 +3,14 @@
 This is my attempt to make a structured vulkan project to serve as a base for other vulkan programs.
 
 The project consists of the following parts: 
- - [Application context](https://github.com/grigoryoskin/vulkan-project-starter/blob/master/src/app-context/VulkanApplicationContext.h) - A wrapper for instance, device, queues and command pool.
- - [Swap chain](https://github.com/grigoryoskin/vulkan-project-starter/blob/master/src/app-context/VulkanSwapchain.h) - Manages swap chain and its images.
- - Render context - wrapper for render pass, framebuffer and its attachments. This project has [offscreen render context](https://github.com/grigoryoskin/vulkan-project-starter/blob/master/src/render-context/ForwardRenderer.h) for rendering a scene onto a texture and a [post process render context](https://github.com/grigoryoskin/vulkan-project-starter/blob/master/src/render-context/FlatRenderer.h) for displaying the texture onto a screen.
- - [Models](https://github.com/grigoryoskin/vulkan-project-starter/tree/master/src/scene/DrawableModel.h) contain vertex, index buffers and descriptor sets.
 
-Demo scene in [main.cpp](https://github.com/grigoryoskin/vulkan-project-starter/blob/master/src/main.cpp) demonstrates how this parts work together. It contains multiple objects with shared and separate pipelenes, movable camera,offscreen render pass, post process render pass.
+ [Application context](https://github.com/grigoryoskin/vulkan-project-starter/blob/master/src/app-context/VulkanApplicationContext.h) - A wrapper for instance, device, queues and command pool.
+ [Swap chain](https://github.com/grigoryoskin/vulkan-project-starter/blob/master/src/app-context/VulkanSwapchain.h) - Manages swap chain and its images.
+
+ [Material](https://github.com/grigoryoskin/vulkan-project-starter/blob/master/src/scene/Material.h) holds pipeline and descriptors. Material is stored inside a [Model](https://github.com/grigoryoskin/vulkan-project-starter/blob/master/src/scene/DrawableModel.h).
+ [Scene](https://github.com/grigoryoskin/vulkan-project-starter/blob/master/src/scene/Scene.h) contains models and render pass.
+
+Demo scene in [main.cpp](https://github.com/grigoryoskin/vulkan-project-starter/blob/master/src/main.cpp) demonstrates how this parts work together. It contains multiple objects with shared and separate buffers, movable camera, offscreen render pass, post process render pass.
 
 ![ezgif-4-99e2f6d18489](https://user-images.githubusercontent.com/44236259/123562250-7c233a00-d7e8-11eb-9fee-a86363358d0b.gif)
 
@@ -17,7 +19,7 @@ Demo scene in [main.cpp](https://github.com/grigoryoskin/vulkan-project-starter/
 - [X] Use Vulkan Memory Allocator.
 - [X] Make ApplicationContext into a global const.
 - [ ] Add multisampling.
-- [ ] Use fences for GPU - CPU synchronization.
+- [X] Use fences for GPU - CPU synchronization.
 - [ ] Support swapchain recreation on resize.
 
 ## How to run
@@ -43,6 +45,7 @@ make
 ```
 6. Compile shaders. You might want to run this with sudo if you dont have permissions for write.
 ```
+mkdir ../resources/shaders/generated
 sh ../compile.sh
 ```
 7. Run the executable.
