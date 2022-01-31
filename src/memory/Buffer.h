@@ -7,6 +7,7 @@
 #include <vector>
 #include "../app-context/VulkanApplicationContext.h"
 #include "../scene/Mesh.h"
+#include <memory>
 
 namespace mcvkp
 {
@@ -22,7 +23,7 @@ namespace mcvkp
                       << "\n";
             if (buffer != VK_NULL_HANDLE)
             {
-                vmaDestroyBuffer(VulkanGlobal::context.allocator, buffer, allocation);
+                vmaDestroyBuffer(VulkanGlobal::context.getAllocator(), buffer, allocation);
                 buffer = VK_NULL_HANDLE;
             }
         }
@@ -66,7 +67,7 @@ namespace mcvkp
             VmaAllocationCreateInfo vmaallocInfo = {};
             vmaallocInfo.usage = memoryUsage;
 
-            if (vmaCreateBuffer(VulkanGlobal::context.allocator,
+            if (vmaCreateBuffer(VulkanGlobal::context.getAllocator(),
                                 &bufferInfo,
                                 &vmaallocInfo,
                                 &buffer->buffer,
@@ -85,9 +86,9 @@ namespace mcvkp
             allocate(buffer, numElements * sizeof(T), usage, memoryUsage);
 
             void *data;
-            vmaMapMemory(VulkanGlobal::context.allocator, buffer->allocation, &data);
+            vmaMapMemory(VulkanGlobal::context.getAllocator(), buffer->allocation, &data);
             memcpy(data, elements, numElements * sizeof(T));
-            vmaUnmapMemory(VulkanGlobal::context.allocator, buffer->allocation);
+            vmaUnmapMemory(VulkanGlobal::context.getAllocator(), buffer->allocation);
         }
 
         template <typename T>
